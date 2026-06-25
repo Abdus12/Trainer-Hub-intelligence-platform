@@ -1,0 +1,10 @@
+{
+  "name": "Training Hub — South Zone Command Center",
+  "description": "An AI-driven real-time operations dashboard and employee monitoring platform for Petpooja\u0027s Merchant Training Operations, featuring SLA-paced predictive modeling, live tracking, availability calendars, and automated performance reporting.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

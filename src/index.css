@@ -1,0 +1,216 @@
+@import "tailwindcss";
+
+/* HIGH-CONTRAST LIGHT MODE STYLING OVERRIDES */
+
+/* Base container overrides */
+.light {
+  background-color: #f3f4f6 !important; /* bg-gray-100 equivalent */
+  color: #1f2937 !important; /* text-gray-800 equivalent */
+}
+
+/* Header style override */
+.light header {
+  background-color: #ffffff !important;
+  border-color: #e5e7eb !important;
+  color: #111827 !important;
+}
+
+.light header h1 {
+  color: #111827 !important;
+}
+
+.light header p {
+  color: #4b5563 !important;
+}
+
+/* Sidebar and Navigation Overrides */
+.light aside {
+  background-color: #f9fafb !important;
+  border-color: #e5e7eb !important;
+}
+
+.light aside span {
+  color: #6b7280 !important;
+}
+
+.light aside button {
+  color: #4b5563 !important;
+}
+
+.light aside button:hover {
+  background-color: #e5e7eb !important;
+  color: #111827 !important;
+}
+
+.light aside button.bg-\[\#FF6B00\]\/10 {
+  background-color: rgba(255, 107, 0, 0.12) !important;
+  color: #cc5200 !important;
+}
+
+/* Cards & Panel Container Overrides */
+.light .bg-\[\#1A1D26\],
+.light .bg-\[\#161922\],
+.light .bg-gray-800,
+.light .bg-\[\#0F1117\],
+.light .bg-[#1A1D26],
+.light .bg-[#0F1117],
+.light .bg-[#161922] {
+  background-color: #ffffff !important;
+  border-color: #d1d5db !important;
+  color: #1f2937 !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+}
+
+/* Specific text color overrides */
+.light .text-white,
+.light h2,
+.light h3,
+.light h4,
+.light strong {
+  color: #111827 !important;
+}
+
+.light p,
+.light .text-gray-300,
+.light .text-gray-100 {
+  color: #374151 !important;
+}
+
+.light .text-gray-400 {
+  color: #4b5563 !important;
+}
+
+.light .text-gray-500 {
+  color: #6b7280 !important;
+}
+
+.light .text-gray-600 {
+  color: #4b5563 !important;
+}
+
+/* Inner block boxes & rows styling */
+.light .bg-\[\#0F1117\]\/30,
+.light .bg-\[\#0F1117\]\/40,
+.light .bg-gray-900\/30 {
+  background-color: #f9fafb !important;
+  border-color: #e5e7eb !important;
+}
+
+.light .bg-gray-900 {
+  background-color: #f3f4f6 !important;
+  border-color: #d1d5db !important;
+  color: #1f2937 !important;
+}
+
+/* Table header/row overrides for crisp grid readability */
+.light table th {
+  color: #4b5563 !important;
+  border-bottom: 2px solid #e5e7eb !important;
+}
+
+.light table td {
+  border-bottom: 1px solid #f3f4f6 !important;
+}
+
+.light table tr:hover {
+  background-color: #f9fafb !important;
+}
+
+.light .divide-gray-800\/40 > * + *,
+.light .border-gray-800,
+.light .border-gray-800\/80,
+.light .border-gray-800\/60,
+.light .border-gray-800\/40,
+.light .border-gray-700,
+.light .border-b {
+  border-color: #e5e7eb !important;
+}
+
+/* Form Controls & Filter Selects Visibility */
+.light input,
+.light select,
+.light textarea {
+  background-color: #ffffff !important;
+  border: 1px solid #c0c6d0 !important;
+  color: #111827 !important;
+}
+
+.light input:focus,
+.light select:focus,
+.light textarea:focus {
+  border-color: #FF6B00 !important;
+  outline: none !important;
+}
+
+/* Modal specific overrides for perfect contrast backdrop */
+.light .fixed.inset-0 {
+  background-color: rgba(0, 0, 0, 0.45) !important;
+}
+
+.light .fixed.inset-0 .bg-\[\#1A1D26\] {
+  background-color: #ffffff !important;
+  border-color: #d1d5db !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* Alert severities */
+.light .bg-rose-500\/10 {
+  background-color: #fef2f2 !important;
+  color: #b91c1c !important;
+  border-color: #fca5a5 !important;
+}
+
+.light .text-rose-400 {
+  color: #b91c1c !important;
+}
+
+.light .bg-amber-500\/10 {
+  background-color: #fffbeb !important;
+  color: #b45309 !important;
+  border-color: #fde68a !important;
+}
+
+.light .text-amber-400 {
+  color: #d97706 !important;
+}
+
+.light .bg-blue-500\/10 {
+  background-color: #eff6ff !important;
+  color: #1d4ed8 !important;
+  border-color: #bfdbfe !important;
+}
+
+.light .text-blue-400 {
+  color: #2563eb !important;
+}
+
+/* Status dots and specific interactive indicators */
+.light .text-emerald-400,
+.light .text-emerald-500 {
+  color: #15803d !important;
+}
+
+.light .bg-emerald-500\/10 {
+  background-color: #f0fdf4 !important;
+  color: #166534 !important;
+  border-color: #bbf7d0 !important;
+}
+
+/* Footer info contrast */
+.light footer {
+  background-color: #ffffff !important;
+  border-color: #e5e7eb !important;
+  color: #4b5563 !important;
+}
+
+/* Charts tooltips high contrast overrides */
+.light .recharts-default-tooltip {
+  background-color: #ffffff !important;
+  border: 1px solid #d1d5db !important;
+  color: #111827 !important;
+}
+
+.light .recharts-tooltip-label {
+  color: #111827 !important;
+  font-weight: 700 !important;
+}
