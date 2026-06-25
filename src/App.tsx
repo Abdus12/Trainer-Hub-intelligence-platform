@@ -4,6 +4,7 @@ import {
   RefreshCw, Database, AlertCircle, Sparkles, CheckCircle2,
   Clock, ShieldAlert, HeartHandshake, Sun, Moon, MessageSquare, FileText, Building, Bot, Settings
 } from "lucide-react";
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { Trainer, Merchant, Session, EmailLog, Alert, Summary } from "./types";
 import HomeTab from "./components/HomeTab";
 import LiveTab from "./components/LiveTab";
@@ -613,6 +614,7 @@ export default function App() {
         </p>
       </footer>
 
+      <SpeedInsights />
     </div>
   );
 }
