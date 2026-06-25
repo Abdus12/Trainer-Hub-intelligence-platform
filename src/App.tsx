@@ -5,6 +5,10 @@ import {
   Clock, ShieldAlert, HeartHandshake, Sun, Moon, MessageSquare, FileText, Building, Bot, Settings
 } from "lucide-react";
 import { Trainer, Merchant, Session, EmailLog, Alert, Summary } from "./types";
+import {generateDatabase, getState, simulationTick,
+  actionCheckIn, actionCheckOut, actionLogSession,
+  actionRetryEmail, actionZohoSync, actionLeadsquaredSync, actionSimulation
+} from "./clientEngine";
 import HomeTab from "./components/HomeTab";
 import LiveTab from "./components/LiveTab";
 import ProductivityTab from "./components/ProductivityTab";
