@@ -4,6 +4,7 @@ import {
   RefreshCw, Database, AlertCircle, Sparkles, CheckCircle2,
   Clock, ShieldAlert, HeartHandshake, Sun, Moon, MessageSquare, FileText, Building, Bot, Settings
 } from "lucide-react";
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { Trainer, Merchant, Session, EmailLog, Alert, Summary } from "./types";
 import {generateDatabase, getState, simulationTick,
   actionCheckIn, actionCheckOut, actionLogSession,
@@ -617,6 +618,7 @@ export default function App() {
         </p>
       </footer>
 
+      <SpeedInsights />
     </div>
   );
 }
