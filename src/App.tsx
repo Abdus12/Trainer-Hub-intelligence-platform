@@ -39,6 +39,8 @@ export default function App() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [integrationLogs, setIntegrationLogs] = useState<any[]>([]);
+  const [reportSchedules, setReportSchedules] = useState<any[]>([]);
+  const [scheduledDispatchLogs, setScheduledDispatchLogs] = useState<any[]>([]);
   
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState<string>("");
@@ -113,6 +115,8 @@ export default function App() {
       setAlerts(data.alerts);
       setSummary(data.summary);
       setIntegrationLogs(data.integrationLogs || []);
+      setReportSchedules(data.reportSchedules || []);
+      setScheduledDispatchLogs(data.scheduledDispatchLogs || []);
     } catch (err) {
       console.error("Error retrieving state:", err);
     }
@@ -639,6 +643,9 @@ export default function App() {
               summary={summary}
               alerts={alerts}
               merchants={merchants}
+              reportSchedules={reportSchedules}
+              scheduledDispatchLogs={scheduledDispatchLogs}
+              onRefreshState={fetchState}
             />
           )}
 

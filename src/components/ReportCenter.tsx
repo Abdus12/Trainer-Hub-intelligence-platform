@@ -2,9 +2,10 @@ import React, { useState, useMemo } from "react";
 import { 
   FileText, Download, Share2, Mail, MessageSquare, ShieldAlert, Sparkles, 
   Settings, CheckSquare, RefreshCw, Layers, Calendar, ClipboardList, CheckCircle2,
-  TrendingUp, Users, Clock, Search, Briefcase, MapPin, CheckCircle, BarChart3, AlertTriangle, ArrowUpRight
+  TrendingUp, Users, Clock, Search, Briefcase, MapPin, CheckCircle, BarChart3, AlertTriangle, ArrowUpRight,
+  Trash2, Plus, Play
 } from "lucide-react";
-import { Trainer, Session, EmailLog, Summary, Alert, Merchant } from "../types";
+import { Trainer, Session, EmailLog, Summary, Alert, Merchant, ReportSchedule, ScheduledDispatchLog } from "../types";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -26,6 +27,9 @@ interface ReportCenterProps {
   summary: Summary | null;
   alerts: Alert[];
   merchants?: Merchant[];
+  reportSchedules?: ReportSchedule[];
+  scheduledDispatchLogs?: ScheduledDispatchLog[];
+  onRefreshState?: () => void;
 }
 
 type ReportType = 
@@ -43,13 +47,135 @@ export default function ReportCenter({
   emailLogs, 
   summary, 
   alerts, 
-  merchants = [] 
+  merchants = [],
+  reportSchedules = [],
+  scheduledDispatchLogs = [],
+  onRefreshState
 }: ReportCenterProps) {
   const [selectedReport, setSelectedReport] = useState<ReportType>("daily");
   const [exportFormat, setExportFormat] = useState<"pdf" | "excel" | "powerpoint" | "whatsapp" | "email">("pdf");
   const [generating, setGenerating] = useState(false);
   const [generatedReport, setGeneratedReport] = useState<string | null>(null);
   const [stageMode, setStageMode] = useState<"visual" | "text">("text");
+
+  // Form states for report scheduling
+  const [schedReportType, setSchedReportType] = useState<ReportType>("daily");
+  const [schedFrequency, setSchedFrequency] = useState<"daily" | "weekly">("daily");
+  const [schedTime, setSchedTime] = useState<string>("09:00");
+  const [schedDays, setSchedDays] = useState<number[]>([]); // 0-6 Sunday-Saturday
+  const [schedRecipientsInput, setSchedRecipientsInput] = useState<string>("");
+  const [isSubmittingSchedule, setIsSubmittingSchedule] = useState(false);
+  const [testingScheduleId, setTestingScheduleId] = useState<string | null>(null);
+  const [schedulerMessage, setSchedulerMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  const handleDaysOfWeekToggle = (day: number) => {
+    if (schedDays.includes(day)) {
+      setSchedDays(schedDays.filter(d => d !== day));
+    } else {
+      setSchedDays([...schedDays, day].sort());
+    }
+  };
+
+  const handleCreateSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!schedRecipientsInput.trim()) {
+      setSchedulerMessage({ text: "At least one recipient email is required.", type: "error" });
+      return;
+    }
+
+    const recipients = schedRecipientsInput
+      .split(/[\s,;]+/)
+      .map(email => email.trim())
+      .filter(email => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+
+    if (recipients.length === 0) {
+      setSchedulerMessage({ text: "Please enter valid email addresses.", type: "error" });
+      return;
+    }
+
+    if (schedFrequency === "weekly" && schedDays.length === 0) {
+      setSchedulerMessage({ text: "Please select at least one day for weekly dispatch.", type: "error" });
+      return;
+    }
+
+    setIsSubmittingSchedule(true);
+    setSchedulerMessage(null);
+
+    try {
+      const res = await fetch("/api/report-schedules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          reportType: schedReportType,
+          frequency: schedFrequency,
+          time: schedTime,
+          daysOfWeek: schedFrequency === "weekly" ? schedDays : [],
+          recipients
+        })
+      });
+
+      if (!res.ok) throw new Error("Failed to save schedule");
+      
+      setSchedRecipientsInput("");
+      setSchedDays([]);
+      setSchedulerMessage({ text: "Report schedule created successfully!", type: "success" });
+      
+      if (onRefreshState) onRefreshState();
+    } catch (err: any) {
+      setSchedulerMessage({ text: err.message || "Failed to create schedule", type: "error" });
+    } finally {
+      setIsSubmittingSchedule(false);
+      setTimeout(() => setSchedulerMessage(null), 5000);
+    }
+  };
+
+  const handleDeleteSchedule = async (id: string) => {
+    try {
+      const res = await fetch(`/api/report-schedules/${id}`, {
+        method: "DELETE"
+      });
+      if (!res.ok) throw new Error("Failed to delete schedule");
+      if (onRefreshState) onRefreshState();
+    } catch (err) {
+      console.error("Error deleting schedule:", err);
+    }
+  };
+
+  const handleToggleScheduleActive = async (id: string, currentActive: boolean) => {
+    try {
+      const schedule = reportSchedules.find(s => s.id === id);
+      if (!schedule) return;
+      const res = await fetch("/api/report-schedules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...schedule,
+          active: !currentActive
+        })
+      });
+      if (!res.ok) throw new Error("Failed to toggle schedule state");
+      if (onRefreshState) onRefreshState();
+    } catch (err) {
+      console.error("Error toggling schedule state:", err);
+    }
+  };
+
+  const handleTriggerTestDispatch = async (id: string) => {
+    setTestingScheduleId(id);
+    try {
+      const res = await fetch("/api/report-schedules/trigger-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id })
+      });
+      if (!res.ok) throw new Error("Test dispatch failed");
+      if (onRefreshState) onRefreshState();
+    } catch (err) {
+      console.error("Error during test dispatch:", err);
+    } finally {
+      setTestingScheduleId(null);
+    }
+  };
 
   // Interactive states for predictive tickets
   const [predictiveHorizon, setPredictiveHorizon] = useState<number>(5);
@@ -904,6 +1030,345 @@ SLA logs are clean. Check-ins validated via remote GPS.
 
         </div>
       </div>
+
+      {/* ZONAL DISPATCH SCHEDULER & RECURRING AUTOMATED REPORTING CONSOLE */}
+      <div className="bg-[#0E1118] border border-gray-800 rounded-2xl p-6 shadow-xl space-y-6" id="dispatch-scheduler">
+        <div>
+          <h2 className="text-lg font-black text-white tracking-tight flex items-center gap-2">
+            <Mail className="w-5 h-5 text-[#FF6B00]" />
+            AUTOMATED DISPATCH SCHEDULER
+          </h2>
+          <p className="text-xs text-gray-400 font-medium">
+            Establish automated cron-like email intervals to broadcast compiled performance summaries, Zoho ticket trends, and workforce shift availability declarations directly to management inboxes.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* Create Schedule Form */}
+          <div className="lg:col-span-5 bg-[#10121A] border border-gray-800/80 rounded-xl p-5 space-y-4">
+            <h3 className="text-xs uppercase tracking-wider font-extrabold text-[#FF6B00] flex items-center gap-1.5">
+              <Plus className="w-4 h-4" />
+              PROVISION DISPATCH INTERVAL
+            </h3>
+
+            <form onSubmit={handleCreateSchedule} className="space-y-4">
+              {/* Report Type */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase text-gray-500 font-extrabold tracking-wider block">
+                  Report Segment Digest
+                </label>
+                <select
+                  value={schedReportType}
+                  onChange={(e) => setSchedReportType(e.target.value as ReportType)}
+                  className="w-full bg-[#141722] border border-gray-800 rounded-lg py-2.5 px-3 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#FF6B00] font-bold"
+                >
+                  <option value="daily">Daily Operations Summary</option>
+                  <option value="ceo">CEO Suite Executive Summary</option>
+                  <option value="availability">Workforce Shift Plan</option>
+                  <option value="state">Zonal State Metrics</option>
+                  <option value="ticket_predictive">Zoho Predictive Ticket Forecast</option>
+                  <option value="merchant_allocation">Merchant Allocation Map</option>
+                  <option value="trainer_productivity">Trainer Productivity Audit Ledger</option>
+                </select>
+              </div>
+
+              {/* Frequency Segments */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase text-gray-500 font-extrabold tracking-wider block">
+                  Interval Frequency
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSchedFrequency("daily");
+                      setSchedDays([]);
+                    }}
+                    className={`py-2 px-3 text-xs font-bold rounded-lg transition border flex items-center justify-center gap-1.5 ${
+                      schedFrequency === "daily"
+                        ? "bg-[#FF6B00]/10 border-[#FF6B00] text-white"
+                        : "bg-[#141722] border-gray-800 text-gray-400 hover:bg-[#1C1F2E]"
+                    }`}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    Daily Interval
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSchedFrequency("weekly")}
+                    className={`py-2 px-3 text-xs font-bold rounded-lg transition border flex items-center justify-center gap-1.5 ${
+                      schedFrequency === "weekly"
+                        ? "bg-[#FF6B00]/10 border-[#FF6B00] text-white"
+                        : "bg-[#141722] border-gray-800 text-gray-400 hover:bg-[#1C1F2E]"
+                    }`}
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                    Weekly Routine
+                  </button>
+                </div>
+              </div>
+
+              {/* Weekly Days Multiselect */}
+              {schedFrequency === "weekly" && (
+                <div className="space-y-1.5 animate-fadeIn">
+                  <label className="text-[10px] uppercase text-gray-500 font-extrabold tracking-wider block">
+                    Routine Dispatch Days
+                  </label>
+                  <div className="flex flex-wrap gap-1">
+                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((dayName, idx) => {
+                      const isActive = schedDays.includes(idx);
+                      return (
+                        <button
+                          key={dayName}
+                          type="button"
+                          onClick={() => handleDaysOfWeekToggle(idx)}
+                          className={`w-9 h-9 text-[10px] font-black rounded-lg border transition ${
+                            isActive
+                              ? "bg-[#FF6B00] border-[#FF6B00] text-black"
+                              : "bg-[#141722] border-gray-800 text-gray-400 hover:bg-[#1C1F2E]"
+                          }`}
+                        >
+                          {dayName}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Scheduled Time and Outbound Input Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase text-gray-500 font-extrabold tracking-wider block">
+                    Dispatch Time (IST)
+                  </label>
+                  <input
+                    type="time"
+                    value={schedTime}
+                    onChange={(e) => setSchedTime(e.target.value)}
+                    className="w-full bg-[#141722] border border-gray-800 rounded-lg py-2 px-3 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#FF6B00] font-mono font-bold"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase text-gray-500 font-extrabold tracking-wider block">
+                    Target User Role
+                  </label>
+                  <div className="w-full py-2 px-3 bg-[#141722]/50 border border-gray-800/60 rounded-lg text-gray-400 text-xs font-bold select-none cursor-default">
+                    Manager Group Suite
+                  </div>
+                </div>
+              </div>
+
+              {/* Recipients List */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] uppercase text-gray-500 font-extrabold tracking-wider block">
+                  Dispatch Recipients (Comma-separated)
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. manager@petpooja.com, regional.lead@petpooja.com"
+                  value={schedRecipientsInput}
+                  onChange={(e) => setSchedRecipientsInput(e.target.value)}
+                  className="w-full bg-[#141722] border border-gray-800 rounded-lg py-2 px-3 text-xs text-white focus:outline-none focus:ring-1 focus:ring-[#FF6B00] placeholder-gray-600 font-bold"
+                />
+              </div>
+
+              {schedulerMessage && (
+                <div className={`p-2.5 rounded-lg text-xs font-semibold ${
+                  schedulerMessage.type === "success" 
+                    ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400" 
+                    : "bg-rose-500/10 border border-rose-500/20 text-rose-400"
+                }`}>
+                  {schedulerMessage.text}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isSubmittingSchedule}
+                className="w-full py-2.5 bg-gradient-to-r from-[#FF6B00] to-orange-600 text-xs font-extrabold text-black rounded-lg hover:opacity-95 transition flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                {isSubmittingSchedule ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ACTIVATING CRON REGISTRY...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-3.5 h-3.5" />
+                    PROVISION RECURRING DISPATCH
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+
+          {/* Active Schedules List and Outbound Run Logs */}
+          <div className="lg:col-span-7 flex flex-col gap-5">
+            {/* Active intervals list */}
+            <div className="bg-[#10121A] border border-gray-800/80 rounded-xl p-5 space-y-3.5 flex-1 flex flex-col min-h-0">
+              <h3 className="text-xs uppercase tracking-wider font-extrabold text-white flex items-center justify-between">
+                <span>ACTIVE DISPATCH SCHEDULER PROTOCOLS ({reportSchedules.length})</span>
+                <span className="text-[9px] text-[#FF6B00] font-mono uppercase tracking-widest font-black">CRON REGISTRY ONLINE</span>
+              </h3>
+
+              <div className="space-y-2.5 overflow-y-auto max-h-[220px] flex-1 pr-1">
+                {reportSchedules.map((schedule) => {
+                  const reportTitles: Record<string, string> = {
+                    daily: "Daily Operations Summary",
+                    ceo: "CEO Suite Executive Summary",
+                    availability: "Workforce Shift Plan",
+                    state: "Zonal State Metrics",
+                    ticket_predictive: "Zoho Predictive Ticket Forecast",
+                    merchant_allocation: "Merchant Allocation Map",
+                    trainer_productivity: "Trainer Productivity Audit Ledger"
+                  };
+
+                  const isTesting = testingScheduleId === schedule.id;
+
+                  return (
+                    <div
+                      key={schedule.id}
+                      className={`bg-[#141722] border rounded-lg p-3.5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-gray-700 transition ${
+                        schedule.active ? "border-gray-800" : "border-gray-900 opacity-60"
+                      }`}
+                    >
+                      <div className="space-y-1.5 min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded border ${
+                            schedule.active 
+                              ? "bg-orange-500/10 border-orange-500/20 text-orange-400" 
+                              : "bg-gray-800/10 border-gray-800 text-gray-500"
+                          }`}>
+                            {schedule.reportType.replace("_", " ")}
+                          </span>
+                          <span className="text-[10px] font-mono text-gray-500">
+                            {schedule.frequency === "daily" ? "Daily at" : "Weekly at"} {schedule.time}
+                          </span>
+                        </div>
+
+                        <span className="text-xs font-extrabold text-white block truncate">
+                          {reportTitles[schedule.reportType] || "Performance Report"}
+                        </span>
+
+                        <div className="text-[9px] text-gray-400 font-bold leading-tight">
+                          <span className="text-gray-600">To:</span> {schedule.recipients.join(", ")}
+                        </div>
+
+                        {schedule.frequency === "weekly" && schedule.daysOfWeek && schedule.daysOfWeek.length > 0 && (
+                          <div className="flex items-center gap-1 mt-1">
+                            <span className="text-[8px] text-gray-650 font-bold uppercase tracking-wider mr-1">Days:</span>
+                            {schedule.daysOfWeek.map(d => (
+                              <span key={d} className="text-[8px] px-1 py-0.2 bg-gray-800 text-gray-300 font-bold rounded">
+                                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d]}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {schedule.lastDispatchedAt && (
+                          <span className="text-[9px] text-gray-600 block">
+                            Last execution: {new Date(schedule.lastDispatchedAt).toLocaleString("en-IN", {
+                              day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+                            })}
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-center">
+                        {/* Status Active Toggle */}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleScheduleActive(schedule.id, schedule.active)}
+                          className={`text-[9px] font-black px-2 py-1 rounded transition border ${
+                            schedule.active 
+                              ? "bg-[#FF6B00]/10 border-[#FF6B00]/20 text-[#FF6B00] hover:bg-[#FF6B00]/20" 
+                              : "bg-gray-900 border-gray-800 text-gray-500 hover:text-gray-400"
+                          }`}
+                        >
+                          {schedule.active ? "ACTIVE" : "PAUSED"}
+                        </button>
+
+                        {/* Trigger Manual Test */}
+                        <button
+                          type="button"
+                          disabled={isTesting || !schedule.active}
+                          onClick={() => handleTriggerTestDispatch(schedule.id)}
+                          title="Trigger Simulated Email Send Now"
+                          className="p-1.5 bg-[#1C1F2D] border border-gray-800 hover:border-gray-700 disabled:opacity-40 text-[#FF6B00] hover:text-orange-400 rounded-lg transition"
+                        >
+                          {isTesting ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Play className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+
+                        {/* Delete */}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteSchedule(schedule.id)}
+                          className="p-1.5 bg-[#1C1F2D] border border-gray-800 hover:border-rose-900 hover:text-rose-450 text-gray-500 rounded-lg transition"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {reportSchedules.length === 0 && (
+                  <div className="text-center py-10 border border-dashed border-gray-850 rounded-lg text-gray-500 font-medium text-xs">
+                    No automated dispatch report protocols configured. Use the left console to schedule your first email.
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Outbound Logs */}
+            <div className="bg-[#10121A] border border-gray-800/80 rounded-xl p-5 space-y-3 flex-1 flex flex-col min-h-0">
+              <h3 className="text-xs uppercase tracking-wider font-extrabold text-white flex items-center gap-1.5">
+                <FileText className="w-4 h-4 text-[#FF6B00]" />
+                RECURRING DISPATCH TRANSMISSION RUN LOGS
+              </h3>
+
+              <div className="space-y-2 overflow-y-auto max-h-[180px] flex-1 pr-1 font-mono text-[9px]">
+                {scheduledDispatchLogs.map((log) => {
+                  return (
+                    <div
+                      key={log.id}
+                      className="bg-gray-950/60 border border-gray-850 p-2.5 rounded-lg flex items-start justify-between gap-3 text-gray-400 hover:border-gray-800 transition"
+                    >
+                      <div className="space-y-1 min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="text-emerald-400 font-bold flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                            SUCCESS
+                          </span>
+                          <span className="text-gray-500 font-bold">|</span>
+                          <span className="text-gray-300 font-extrabold">{log.subject}</span>
+                        </div>
+                        <p className="text-gray-400 leading-normal">{log.message}</p>
+                        <div className="text-[8px] text-gray-600 flex flex-wrap gap-x-3 gap-y-0.5">
+                          <span>Recipients: {log.recipients.join(", ")}</span>
+                          <span>Timestamp: {new Date(log.dispatchedAt).toLocaleString("en-IN")}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {scheduledDispatchLogs.length === 0 && (
+                  <div className="text-center py-8 text-gray-600 font-medium italic">
+                    No run history available. Complete a schedule test to stream outbound transmission telemetry.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }

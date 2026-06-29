@@ -11,6 +11,18 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
+// Force HTTPS redirect on Vercel and other reverse proxies
+app.use((req, res, next) => {
+  if (
+    req.headers["x-forwarded-proto"] === "http" && 
+    !req.headers.host?.includes("localhost") && 
+    !req.headers.host?.includes("127.0.0.1")
+  ) {
+    return res.redirect(301, `https://${req.headers.host}${req.url}`);
+  }
+  next();
+});
+
 const PORT = 3000;
 
 // Initialize Gemini SDK with telemetry header as required by guidelines
@@ -211,6 +223,56 @@ interface IntegrationLog {
 }
 
 let integrationLogs: IntegrationLog[] = [];
+
+let reportSchedules: any[] = [
+  {
+    id: "schedule-1",
+    reportType: "daily",
+    frequency: "daily",
+    time: "08:00",
+    daysOfWeek: [],
+    recipients: ["abdus.salam74@gmail.com", "training.ops@petpooja.com"],
+    active: true,
+    createdAt: new Date().toISOString(),
+    lastDispatchedAt: new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    id: "schedule-2",
+    reportType: "ceo",
+    frequency: "weekly",
+    time: "18:00",
+    daysOfWeek: [5], // Friday
+    recipients: ["ceo.office@petpooja.com", "abdus.salam74@gmail.com"],
+    active: true,
+    createdAt: new Date().toISOString(),
+    lastDispatchedAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString()
+  }
+];
+
+let scheduledDispatchLogs: any[] = [
+  {
+    id: "dispatch-log-1",
+    scheduleId: "schedule-1",
+    reportType: "daily",
+    frequency: "daily",
+    recipients: ["abdus.salam74@gmail.com", "training.ops@petpooja.com"],
+    dispatchedAt: new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString(),
+    status: "success",
+    subject: "Automated Dispatch: Daily Ops Performance Summary",
+    message: "Performance summary generated and dispatched successfully to 2 recipients."
+  },
+  {
+    id: "dispatch-log-2",
+    scheduleId: "schedule-2",
+    reportType: "ceo",
+    frequency: "weekly",
+    recipients: ["ceo.office@petpooja.com", "abdus.salam74@gmail.com"],
+    dispatchedAt: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
+    status: "success",
+    subject: "Automated Dispatch: CEO Suite Executive Summary",
+    message: "CEO suite performance audit completed and dispatched successfully to 2 recipients."
+  }
+];
 
 let lastSimulationTime = Date.now();
 
@@ -789,7 +851,9 @@ app.get("/api/state", (req, res) => {
     alerts,
     summary,
     teamLeaders: TEAM_LEADERS,
-    integrationLogs
+    integrationLogs,
+    reportSchedules,
+    scheduledDispatchLogs
   });
 });
 
@@ -1201,6 +1265,148 @@ app.post("/api/vercel-hub/trigger-automated-report", (req, res) => {
   }
 
   res.json({ success: true, report: reportPayload, log });
+});
+
+// ========================================================================
+// RECURRING REPORT SCHEDULES ENDPOINTS
+// ========================================================================
+
+// 1. Get schedules and dispatch logs
+app.get("/api/report-schedules", (req, res) => {
+  res.json({
+    success: true,
+    schedules: reportSchedules,
+    logs: scheduledDispatchLogs
+  });
+});
+
+// 2. Create or update schedule
+app.post("/api/report-schedules", (req, res) => {
+  const { id, reportType, frequency, time, daysOfWeek, recipients, active } = req.body;
+
+  if (!reportType || !frequency || !time || !recipients || !Array.isArray(recipients) || recipients.length === 0) {
+    return res.status(400).json({ error: "Missing required parameters or recipients list is empty." });
+  }
+
+  if (id) {
+    // Update
+    const index = reportSchedules.findIndex(s => s.id === id);
+    if (index === -1) {
+      return res.status(404).json({ error: "Schedule not found." });
+    }
+    reportSchedules[index] = {
+      ...reportSchedules[index],
+      reportType,
+      frequency,
+      time,
+      daysOfWeek: daysOfWeek || [],
+      recipients,
+      active: active !== undefined ? active : reportSchedules[index].active
+    };
+    return res.json({ success: true, schedule: reportSchedules[index] });
+  } else {
+    // Create
+    const newSchedule = {
+      id: `schedule-${Date.now()}`,
+      reportType,
+      frequency,
+      time,
+      daysOfWeek: daysOfWeek || [],
+      recipients,
+      active: true,
+      createdAt: new Date().toISOString(),
+      lastDispatchedAt: null
+    };
+    reportSchedules.push(newSchedule);
+    return res.json({ success: true, schedule: newSchedule });
+  }
+});
+
+// 3. Delete schedule
+app.delete("/api/report-schedules/:id", (req, res) => {
+  const { id } = req.params;
+  const index = reportSchedules.findIndex(s => s.id === id);
+  if (index === -1) {
+    return res.status(404).json({ error: "Schedule not found." });
+  }
+  const deleted = reportSchedules.splice(index, 1)[0];
+  // Clean up logs associated with this schedule
+  scheduledDispatchLogs = scheduledDispatchLogs.filter(l => l.scheduleId !== id);
+  res.json({ success: true, deletedSchedule: deleted });
+});
+
+// 4. Trigger manual test dispatch
+app.post("/api/report-schedules/trigger-test", (req, res) => {
+  const { id } = req.body;
+  const schedule = reportSchedules.find(s => s.id === id);
+  if (!schedule) {
+    return res.status(404).json({ error: "Schedule not found." });
+  }
+
+  // Generate a mock report based on selection to send in the log
+  const reportTitles: Record<string, string> = {
+    daily: "Daily Ops Performance Summary",
+    ceo: "CEO Suite Executive Summary",
+    availability: "Shift Plan & Workforce Availability Report",
+    state: "State Metrics Consolidated Audit",
+    ticket_predictive: "Predictive Ticket Zoho Forecast",
+    merchant_allocation: "Merchant Trainer Allocation Map",
+    trainer_productivity: "Trainer Productivity Audit Ledger"
+  };
+
+  const subject = `Automated Dispatch: ${reportTitles[schedule.reportType] || "Performance Summary"}`;
+  
+  // Update last dispatched timestamp
+  schedule.lastDispatchedAt = new Date().toISOString();
+
+  // Create scheduled log
+  const newLog = {
+    id: `dispatch-log-${Date.now()}`,
+    scheduleId: schedule.id,
+    reportType: schedule.reportType,
+    frequency: schedule.frequency,
+    recipients: schedule.recipients,
+    dispatchedAt: new Date().toISOString(),
+    status: "success",
+    subject,
+    message: `A simulated automated dispatch was initiated and delivered successfully to ${schedule.recipients.length} configured recipient(s).`
+  };
+
+  scheduledDispatchLogs.unshift(newLog);
+  if (scheduledDispatchLogs.length > 50) {
+    scheduledDispatchLogs.pop();
+  }
+
+  // Also append an entry in standard EmailLog to ensure high fidelity bi-directional simulation!
+  const mockEmailSessionId = `session-sched-${Date.now()}`;
+  emailLogs.push({
+    id: `log-${mockEmailSessionId}`,
+    session_id: mockEmailSessionId,
+    trainer_id: "system-scheduler",
+    merchant_name: "Operations Dashboard Group",
+    to_merchant: schedule.recipients[0],
+    to_ops: schedule.recipients.slice(1).join(", ") || "training.ops@petpooja.com",
+    subject,
+    sent_at: new Date().toISOString(),
+    status: "sent",
+    retry_count: 0,
+    error_message: null
+  });
+
+  // Create an alert in the system as well!
+  alerts.push({
+    id: `alert-schedule-${Date.now()}`,
+    type: "email_fail", // Map to existing severity styles or CRM
+    trainer_id: "system-scheduler",
+    trainer_name: "Automated Scheduler Service",
+    tl_id: "Zonal Manager",
+    message: `Scheduled automated dispatch completed for "${reportTitles[schedule.reportType]}". Delivered to ${schedule.recipients.join(", ")}.`,
+    severity: "low",
+    timestamp: new Date().toISOString(),
+    resolved: true
+  });
+
+  res.json({ success: true, log: newLog, schedules: reportSchedules, logs: scheduledDispatchLogs });
 });
 
 // Helper function to call Gemini generateContent with retry logic to handle transient 503 errors

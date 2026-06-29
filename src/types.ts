@@ -139,3 +139,28 @@ export interface Toast {
   timestamp: string;
 }
 
+export interface ReportSchedule {
+  id: string;
+  reportType: "daily" | "ceo" | "availability" | "state" | "ticket_predictive" | "merchant_allocation" | "trainer_productivity";
+  frequency: "daily" | "weekly";
+  time: string; // "HH:MM" format
+  daysOfWeek: number[]; // 0-6 (Sunday-Saturday)
+  recipients: string[];
+  active: boolean;
+  createdAt: string;
+  lastDispatchedAt: string | null;
+}
+
+export interface ScheduledDispatchLog {
+  id: string;
+  scheduleId: string;
+  reportType: string;
+  frequency: string;
+  recipients: string[];
+  dispatchedAt: string;
+  status: "success" | "failed";
+  subject: string;
+  message: string;
+}
+
+
