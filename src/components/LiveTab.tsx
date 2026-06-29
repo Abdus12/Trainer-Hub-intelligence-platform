@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import L from "leaflet";
 import { 
   MapPin, AlertCircle, RefreshCw, MessageSquare, Phone, Map, 
   Layers, Search, Target, Users, Zap, Bug, Sparkles
@@ -18,6 +19,10 @@ export default function LiveTab({ trainers = [], alerts = [], onRefreshState, on
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [selectedStateFilter, setSelectedStateFilter] = useState<string>("all");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>("all");
+
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const markersLayerRef = useRef<L.LayerGroup | null>(null);
 
   // Filter calculations
   const totalTrainersCount = trainers ? trainers.length : 0;
@@ -106,6 +111,131 @@ export default function LiveTab({ trainers = [], alerts = [], onRefreshState, on
     return `https://wa.me/${t.phone.replace(/\+/g, "")}?text=${encodeURIComponent(msg)}`;
   };
 
+  // Map Initialization
+  useEffect(() => {
+    if (!mapContainerRef.current) return;
+
+    if (!mapRef.current) {
+      // Bangalore is central to South India
+      const map = L.map(mapContainerRef.current, {
+        center: [12.9716, 77.5946],
+        zoom: 6,
+        zoomControl: true,
+        attributionControl: false
+      });
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18,
+      }).addTo(map);
+
+      mapRef.current = map;
+      markersLayerRef.current = L.layerGroup().addTo(map);
+    }
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+        markersLayerRef.current = null;
+      }
+    };
+  }, []);
+
+  // Update Markers when filtered trainers state or selectedTrainer state changes
+  useEffect(() => {
+    if (!mapRef.current || !markersLayerRef.current) return;
+
+    markersLayerRef.current.clearLayers();
+
+    filteredTrainers.forEach((t) => {
+      const lat = t.last_location?.lat || 12.9716;
+      const lng = t.last_location?.lng || 77.5946;
+      const sla = getTrainerSLA(t);
+
+      let markerColor = "#6B7280";
+      if (t.is_checked_in) {
+        if (sla.status === "MET") {
+          markerColor = "#10B981";
+        } else if (sla.status === "ON_TRACK") {
+          markerColor = "#F59E0B";
+        } else {
+          markerColor = "#EF4444";
+        }
+      }
+
+      // Add simple pulse wrapper for breach/critical
+      const pulseHtml = (t.is_checked_in && sla.status === "BREACH") 
+        ? `<div class="absolute w-6 h-6 rounded-full bg-rose-500 opacity-35 animate-ping"></div>` 
+        : "";
+
+      const customIcon = L.divIcon({
+        className: "bg-transparent",
+        html: `
+          <div class="relative flex items-center justify-center w-8 h-8">
+            ${pulseHtml}
+            <div class="absolute w-4 h-4 rounded-full border-2 border-white shadow-lg flex items-center justify-center transition-transform hover:scale-125 cursor-pointer" style="background-color: ${markerColor}">
+              <svg class="w-2.5 h-2.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4">
+                <circle cx="12" cy="12" r="10" />
+              </svg>
+            </div>
+          </div>
+        `,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+        popupAnchor: [0, -10]
+      });
+
+      const popupContent = `
+        <div class="text-xs p-1 leading-normal font-sans">
+          <div class="font-bold text-sm text-white mb-1 border-b border-gray-800 pb-1 flex justify-between items-center gap-2">
+            <span>${t.name}</span>
+            <span class="text-[9px] uppercase tracking-wide px-1.5 py-0.5 bg-gray-900 text-gray-400 border border-gray-800 rounded font-mono">${t.employee_code}</span>
+          </div>
+          <div class="space-y-1 mt-1.5 text-gray-300">
+            <div><strong class="text-gray-500 font-medium">TL:</strong> <span class="text-gray-200">${t.team_leader}</span></div>
+            <div><strong class="text-gray-500 font-medium">State:</strong> <span class="text-gray-200">${t.state}</span></div>
+            <div><strong class="text-gray-500 font-medium">SLA:</strong> <span class="font-bold font-mono px-1 py-0.5 rounded text-[10px]" style="color: ${markerColor}; background: ${markerColor}15">${sla.text}</span></div>
+            <div><strong class="text-gray-500 font-medium">Completed:</strong> <span class="font-bold text-white font-mono">${t.today_sessions} / 4</span></div>
+          </div>
+        </div>
+      `;
+
+      const marker = L.marker([lat, lng], { icon: customIcon })
+        .bindPopup(popupContent, { minWidth: 160 })
+        .on("click", () => {
+          setSelectedTrainer(t);
+        });
+
+      markersLayerRef.current?.addLayer(marker);
+    });
+  }, [filteredTrainers, selectedTrainer]);
+
+  // Handle map center fly-to when selectedTrainer changes
+  useEffect(() => {
+    if (selectedTrainer && mapRef.current && selectedTrainer.last_location) {
+      mapRef.current.setView(
+        [selectedTrainer.last_location.lat, selectedTrainer.last_location.lng],
+        8,
+        { animate: true, duration: 1.5 }
+      );
+    }
+  }, [selectedTrainer]);
+
+  // Handle dynamic map resize/invalidation
+  useEffect(() => {
+    const handleResize = () => {
+      if (mapRef.current) {
+        mapRef.current.invalidateSize();
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    const timer = setTimeout(handleResize, 350);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      clearTimeout(timer);
+    };
+  }, [selectedTrainer]);
+
   return (
     <div className="space-y-6">
       
@@ -177,48 +307,11 @@ export default function LiveTab({ trainers = [], alerts = [], onRefreshState, on
             </div>
           </div>
 
-          {/* Interactive SVG South India Map Mockup */}
-          <div className="flex-1 bg-[#0F1117] relative overflow-hidden select-none">
-            {/* Ambient map boundaries representation */}
-            <svg className="absolute inset-0 w-full h-full opacity-10 pointer-events-none" viewBox="0 0 800 600">
-              <path d="M 300 100 Q 400 120 450 150 T 480 250 T 400 350 T 350 480 T 300 550" fill="none" stroke="#FFFFFF" strokeWidth="2" strokeDasharray="5,5" />
-              <path d="M 450 150 Q 550 200 600 300 T 500 450 T 420 530" fill="none" stroke="#FFFFFF" strokeWidth="2" strokeDasharray="5,5" />
-              <path d="M 300 100 Q 200 150 180 250 T 250 400 T 310 490" fill="none" stroke="#FFFFFF" strokeWidth="2" strokeDasharray="5,5" />
-            </svg>
-
-            {/* City Command Labels */}
-            <div className="absolute top-[8%] left-[45%] text-gray-600 text-[10px] uppercase font-bold">Hyderabad Control</div>
-            <div className="absolute top-[40%] left-[25%] text-gray-600 text-[10px] uppercase font-bold">Bangalore Command</div>
-            <div className="absolute top-[42%] left-[62%] text-gray-600 text-[10px] uppercase font-bold">Chennai Terminal</div>
-            <div className="absolute top-[72%] left-[28%] text-gray-600 text-[10px] uppercase font-bold">Kochi Dock</div>
-            <div className="absolute top-[68%] left-[55%] text-gray-600 text-[10px] uppercase font-bold">Madurai Office</div>
-
-            {/* Plotting filtered trainers as dots on the map layout */}
-            {filteredTrainers.map((t, index) => {
-              const sla = getTrainerSLA(t);
-              // Project relative Coordinates into layout bounds
-              // South India coordinates fit roughly: lat (8 - 18), lng (74 - 82)
-              // We stretch them to 5% - 95% space of map container
-              const mapY = Math.max(5, Math.min(95, 100 - ((t.last_location.lat - 8) / 10) * 100));
-              const mapX = Math.max(5, Math.min(95, ((t.last_location.lng - 74) / 8) * 100));
-
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => setSelectedTrainer(t)}
-                  style={{ top: `${mapY}%`, left: `${mapX}%` }}
-                  className={`absolute transform -translate-x-1/2 -translate-y-1/2 p-1.5 rounded-full shadow-lg transition-all z-20 ${
-                    selectedTrainer?.id === t.id ? 'scale-150 ring-4 ring-[#FF6B00]/40 z-30' : 'hover:scale-125'
-                  } ${sla.color}`}
-                >
-                  <MapPin className="w-3.5 h-3.5 text-white" />
-                </button>
-              );
-            })}
-
+          {/* Real interactive Leaflet map container */}
+          <div ref={mapContainerRef} className="flex-1 min-h-[440px] relative z-0 overflow-hidden select-none" id="real-live-map">
             {/* Empty view map query warning */}
             {filteredTrainers.length === 0 && (
-              <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-xs">
+              <div className="absolute inset-0 bg-[#0F1117] z-10 flex items-center justify-center text-gray-500 text-xs">
                 No active trainers match the current filter query.
               </div>
             )}

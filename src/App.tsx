@@ -4,11 +4,7 @@ import {
   RefreshCw, Database, AlertCircle, Sparkles, CheckCircle2,
   Clock, ShieldAlert, HeartHandshake, Sun, Moon, MessageSquare, FileText, Building, Bot, Settings
 } from "lucide-react";
-import { Trainer, Merchant, Session, EmailLog, Alert, Summary } from "./types";
-import {generateDatabase, getState, simulationTick,
-  actionCheckIn, actionCheckOut, actionLogSession,
-  actionRetryEmail, actionZohoSync, actionLeadsquaredSync, actionSimulation
-} from "./clientEngine";
+import { Trainer, Merchant, Session, EmailLog, Alert, Summary, Toast } from "./types";
 import HomeTab from "./components/HomeTab";
 import LiveTab from "./components/LiveTab";
 import ProductivityTab from "./components/ProductivityTab";
@@ -19,6 +15,7 @@ import MerchantIntelligence from "./components/MerchantIntelligence";
 import CommunicationHub from "./components/CommunicationHub";
 import ReportCenter from "./components/ReportCenter";
 import AICopilotSidebar from "./components/AICopilotSidebar";
+import ToastContainer from "./components/ToastContainer";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<
@@ -41,11 +38,61 @@ export default function App() {
   const [emailLogs, setEmailLogs] = useState<EmailLog[]>([]);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [integrationLogs, setIntegrationLogs] = useState<any[]>([]);
   
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncStatusMsg, setSyncStatusMsg] = useState<string>("");
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   const [isPolling, setIsPolling] = useState<boolean>(true);
+
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const prevTrainersRef = React.useRef<Trainer[]>([]);
+
+  const addToast = (message: string, type: "success" | "error" | "info" | "warning" = "success") => {
+    const id = Math.random().toString(36).substring(2, 9);
+    const timestamp = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    setToasts(prev => [...prev, { id, message, type, timestamp }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, 6000);
+  };
+
+  const handleCloseToast = (id: string) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
+  // Compare previous trainers state to active trainers state to trigger real-time check-in and checkout alerts
+  useEffect(() => {
+    if (trainers.length === 0) return;
+    
+    if (prevTrainersRef.current.length === 0) {
+      prevTrainersRef.current = trainers;
+      return;
+    }
+
+    trainers.forEach(trainer => {
+      const prevTrainer = prevTrainersRef.current.find(t => t.id === trainer.id);
+      if (!prevTrainer) return;
+
+      // Check-in transition
+      if (!prevTrainer.is_checked_in && trainer.is_checked_in) {
+        addToast(
+          `Trainer ${trainer.name} (${trainer.employee_code}) has checked in successfully in ${trainer.state}!`,
+          "success"
+        );
+      }
+
+      // Checkout transition
+      if (prevTrainer.is_checked_in && !trainer.is_checked_in) {
+        addToast(
+          `Trainer ${trainer.name} (${trainer.employee_code}) has completed shift & checked out.`,
+          "info"
+        );
+      }
+    });
+
+    prevTrainersRef.current = trainers;
+  }, [trainers]);
 
   // Time ticker
   useEffect(() => {
@@ -65,6 +112,7 @@ export default function App() {
       setEmailLogs(data.emailLogs);
       setAlerts(data.alerts);
       setSummary(data.summary);
+      setIntegrationLogs(data.integrationLogs || []);
     } catch (err) {
       console.error("Error retrieving state:", err);
     }
@@ -94,10 +142,12 @@ export default function App() {
       if (!res.ok) throw new Error("Retry failed");
       await fetchState();
       setSyncStatusMsg("Email delivered successfully ✅");
+      addToast("Email delivered successfully to merchant and ops! ✅", "success");
       setTimeout(() => setSyncStatusMsg(""), 3000);
     } catch (err) {
       console.error(err);
       setSyncStatusMsg("SMTP retry failed ❌");
+      addToast("SMTP email retry failed. Please check mailer settings.", "error");
     }
   };
 
@@ -113,10 +163,12 @@ export default function App() {
       if (!res.ok) throw new Error("Check-in failed");
       await fetchState();
       setSyncStatusMsg("Shift started successfully! ✅");
+      // Note: the trainers array change effect will trigger a descriptive toast, so we don't duplicate here!
       setTimeout(() => setSyncStatusMsg(""), 3000);
     } catch (err) {
       console.error(err);
       setSyncStatusMsg("Check-in error ❌");
+      addToast("Check-in failed. Please verify GPS coordinates.", "error");
     }
   };
 
@@ -144,10 +196,12 @@ export default function App() {
       if (!res.ok) throw new Error("Checkout failed");
       await fetchState();
       setSyncStatusMsg("Availability declared. Checkout complete! ✅");
+      // Note: the trainers array change listener will trigger a descriptive checkout toast, so we don't duplicate here!
       setTimeout(() => setSyncStatusMsg(""), 3000);
     } catch (err) {
       console.error(err);
       setSyncStatusMsg("Checkout error ❌");
+      addToast("Checkout failed. Please declare valid availability hours.", "error");
     }
   };
 
@@ -163,10 +217,12 @@ export default function App() {
       if (!res.ok) throw new Error("Session log failed");
       await fetchState();
       setSyncStatusMsg("Session saved! SMTP Summary Triggered ✅");
+      addToast(`Training session logged successfully! Summary sent to ${data.merchantEmail}. ✅`, "success");
       setTimeout(() => setSyncStatusMsg(""), 3000);
     } catch (err) {
       console.error(err);
       setSyncStatusMsg("Failed to save session ❌");
+      addToast("Failed to save training session.", "error");
     }
   };
 
@@ -582,6 +638,7 @@ export default function App() {
               emailLogs={emailLogs}
               summary={summary}
               alerts={alerts}
+              merchants={merchants}
             />
           )}
 
@@ -589,6 +646,7 @@ export default function App() {
             <ProfileTab 
               trainers={trainers}
               merchants={merchants}
+              integrationLogs={integrationLogs}
               onRefreshState={fetchState}
               onCheckIn={handleCheckIn}
               onCheckOut={handleCheckOut}
@@ -616,6 +674,9 @@ export default function App() {
           TELEMETRY PORT: 3000 | COMPENSATIVE COMPLIANCE SLA METRICS ACTIVE
         </p>
       </footer>
+
+      {/* Real-time Toast Notifications */}
+      <ToastContainer toasts={toasts} onCloseToast={handleCloseToast} />
 
     </div>
   );

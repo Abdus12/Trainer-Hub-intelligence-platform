@@ -3,6 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import fs from "fs";
 import { RAW_SOUTH_ZONE_TRAINERS, CITY_COORDS } from "./src/southZoneTrainersData";
 
 dotenv.config();
@@ -74,6 +75,21 @@ interface Trainer {
     last_sync: string;
   };
   skills?: string[];
+  vercel_hub_insights?: {
+    performance_prediction: string;
+    sentiment_analysis: string;
+    sentiment_score: number;
+    risk_score: number;
+    fatigue_level: "low" | "medium" | "high";
+    predicted_sla_score: number;
+  };
+  vercel_hub_modules?: Array<{
+    id: string;
+    module_name: string;
+    assigned_at: string;
+    status: "assigned" | "completed";
+    feedback: string;
+  }>;
 }
 
 interface Merchant {
@@ -183,6 +199,20 @@ let merchants: Merchant[] = [];
 let sessions: Session[] = [];
 let emailLogs: EmailLog[] = [];
 let alerts: Alert[] = [];
+
+interface IntegrationLog {
+  id: string;
+  timestamp: string;
+  direction: "outbound" | "inbound";
+  endpoint: string;
+  payload: any;
+  response: any;
+  status: "success" | "error";
+}
+
+let integrationLogs: IntegrationLog[] = [];
+
+let lastSimulationTime = Date.now();
 
 function generateDatabase() {
   trainers = [];
@@ -306,7 +336,24 @@ function generateDatabase() {
         avg_resolution_time: Math.floor(20 + Math.random() * 100),
         last_sync: new Date(Date.now() - Math.floor(Math.random() * 10) * 60 * 1000).toISOString()
       },
-      skills: assignedSkills
+      skills: assignedSkills,
+      vercel_hub_insights: {
+        performance_prediction: avgRating > 4.5 ? "Optimal trajectory. High probability of SLA compliance." : "Moderate risk of bottleneck due to remote device ISP issues.",
+        sentiment_analysis: avgRating > 4.6 ? "Motivated" : (avgRating > 4.1 ? "Positive" : (Math.random() > 0.5 ? "Stressed" : "Neutral")),
+        sentiment_score: Math.round(avgRating * 20),
+        risk_score: Math.round((5 - avgRating) * 20),
+        fatigue_level: avgRating > 4.5 ? "low" : (avgRating > 4.0 ? "medium" : "high"),
+        predicted_sla_score: Math.round(90 + (avgRating - 4.5) * 10)
+      },
+      vercel_hub_modules: [
+        {
+          id: `module-${i}-initial`,
+          module_name: "Standard POS Crash Prevention Guidelines",
+          assigned_at: new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString(),
+          status: "completed",
+          feedback: "Understands general port connectivity and KDS setup."
+        }
+      ]
     };
 
     trainers.push(trainerRecord);
@@ -385,6 +432,43 @@ function generateDatabase() {
       });
     }
   });
+
+  integrationLogs = [
+    {
+      id: "log-init-1",
+      timestamp: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
+      direction: "outbound",
+      endpoint: "https://vercel-trainer-hub.petpooja.co/api/v1/insights",
+      payload: {
+        source: "petpooja-monitoring-app",
+        timestamp: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
+        total_trainers_reported: trainers.length,
+        avg_risk_score: 22
+      },
+      response: {
+        success: true,
+        message: "Insights successfully received and cataloged.",
+        received_records: trainers.length
+      },
+      status: "success"
+    },
+    {
+      id: "log-init-2",
+      timestamp: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+      direction: "inbound",
+      endpoint: "https://petpooja-south-ops.vercel.app/api/vercel-hub/push-feedback",
+      payload: {
+        trainer_id: "trainer-0",
+        module_name: "Standard POS Crash Prevention Guidelines",
+        feedback_notes: "Focus on peripheral port setups."
+      },
+      response: {
+        success: true,
+        message: "Corrective module assigned successfully."
+      },
+      status: "success"
+    }
+  ];
 
   generateAlerts();
 }
@@ -609,6 +693,81 @@ setInterval(() => {
 
 // Get entire state
 app.get("/api/state", (req, res) => {
+  // Run serverless-compatible background simulation tick if 30 seconds has elapsed
+  const now = Date.now();
+  if (now - lastSimulationTime > 30000) {
+    lastSimulationTime = now;
+    trainers.forEach(t => {
+      if (t.is_checked_in) {
+        t.screen_active = Math.random() > 0.25;
+        const latMovement = (Math.random() - 0.5) * 0.008;
+        const lngMovement = (Math.random() - 0.5) * 0.008;
+        t.last_location.lat += latMovement;
+        t.last_location.lng += lngMovement;
+        t.last_location.timestamp = new Date().toISOString();
+
+        if (Math.random() < 0.03 && t.today_sessions < 4) {
+          t.today_sessions += 1;
+          t.last_crm_update = new Date().toISOString();
+          t.leadsquared_sync.activities_today += 1;
+          t.leadsquared_sync.last_sync = new Date().toISOString();
+
+          const merch = merchants.find(m => m.assigned_trainer_id === t.id);
+          if (merch) {
+            const sId = `session-${t.id}-${Date.now()}`;
+            const moduleList: Session["module"][] = ["POS", "KOT", "Reports", "Menu", "Settings", "Full Training", "Retraining"];
+            const chosenMod = moduleList[Math.floor(Math.random() * moduleList.length)];
+            const isEmailSent = Math.random() > 0.05;
+
+            const newSess: Session = {
+              id: sId,
+              trainer_id: t.id,
+              trainer_name: t.name,
+              trainer_email: t.email,
+              merchant_id: merch.id,
+              merchant_name: merch.outlet_name,
+              merchant_email: merch.email,
+              session_type: Math.random() > 0.4 ? "physical" : "remote",
+              module: chosenMod,
+              start_time: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+              end_time: new Date().toISOString(),
+              duration_minutes: 60,
+              notes: `Conducted walkthrough on ${chosenMod}. Verified merchant dashboard operational state.`,
+              modules_covered: [chosenMod],
+              next_session_date: new Date(Date.now() + 86400000 * 2).toISOString().split("T")[0],
+              leadsquared_updated: true,
+              zoho_ticket_id: "",
+              status: "completed",
+              email_status: {
+                sent: isEmailSent,
+                sent_at: isEmailSent ? new Date().toISOString() : null,
+                recipient_merchant: merch.email,
+                recipient_ops: "training.ops@petpooja.com",
+                error: isEmailSent ? null : "Simulated network timeout error"
+              }
+            };
+            sessions.push(newSess);
+
+            emailLogs.push({
+              id: `log-${sId}`,
+              session_id: sId,
+              trainer_id: t.id,
+              merchant_name: merch.outlet_name,
+              to_merchant: merch.email,
+              to_ops: "training.ops@petpooja.com",
+              subject: `Training Session Summary – ${merch.outlet_name} | ${chosenMod}`,
+              sent_at: new Date().toISOString(),
+              status: isEmailSent ? "sent" : "failed",
+              retry_count: isEmailSent ? 0 : 1,
+              error_message: isEmailSent ? null : "Simulated network timeout error"
+            });
+          }
+        }
+      }
+    });
+    generateAlerts();
+  }
+
   const currentHour = new Date().getHours();
   const summary = {
     total_checkins: trainers.filter(t => t.is_checked_in).length,
@@ -629,7 +788,8 @@ app.get("/api/state", (req, res) => {
     emailLogs,
     alerts,
     summary,
-    teamLeaders: TEAM_LEADERS
+    teamLeaders: TEAM_LEADERS,
+    integrationLogs
   });
 });
 
@@ -866,6 +1026,183 @@ app.post("/api/simulation/trigger", (req, res) => {
   res.json({ success: true, message: `Simulation event '${action}' triggered.` });
 });
 
+// ============================================================================
+// VERCEL BACKEND TRAINER HUB INTEGRATION ENDPOINTS
+// ============================================================================
+
+// 1. Push Employee Insights to Vercel Trainer Hub (Outbound telemetry)
+app.post("/api/vercel-hub/push-insights", (req, res) => {
+  const { trainerId, performance_prediction, sentiment_analysis, sentiment_score, risk_score, fatigue_level, predicted_sla_score } = req.body;
+
+  const trainer = trainers.find(t => t.id === trainerId);
+  if (!trainer) {
+    return res.status(404).json({ error: "Trainer not found" });
+  }
+
+  // Update trainer insights
+  const updatedInsights = {
+    performance_prediction: performance_prediction || trainer.vercel_hub_insights?.performance_prediction || "Optimal performance predicted",
+    sentiment_analysis: sentiment_analysis || trainer.vercel_hub_insights?.sentiment_analysis || "Positive",
+    sentiment_score: sentiment_score !== undefined ? sentiment_score : (trainer.vercel_hub_insights?.sentiment_score || 80),
+    risk_score: risk_score !== undefined ? risk_score : (trainer.vercel_hub_insights?.risk_score || 10),
+    fatigue_level: fatigue_level || trainer.vercel_hub_insights?.fatigue_level || "low",
+    predicted_sla_score: predicted_sla_score !== undefined ? predicted_sla_score : (trainer.vercel_hub_insights?.predicted_sla_score || 95)
+  };
+
+  trainer.vercel_hub_insights = updatedInsights;
+
+  // Append outbound log
+  const logId = `log-out-${Date.now()}`;
+  const log: IntegrationLog = {
+    id: logId,
+    timestamp: new Date().toISOString(),
+    direction: "outbound",
+    endpoint: "https://vercel-trainer-hub.petpooja.co/api/v1/insights",
+    payload: {
+      trainer_id: trainer.id,
+      employee_code: trainer.employee_code,
+      name: trainer.name,
+      pushed_at: new Date().toISOString(),
+      insights: updatedInsights
+    },
+    response: {
+      status: "acknowledged",
+      vercel_hub_registry_id: `rec-${Math.random().toString(36).substring(2, 9)}`,
+      sync_success: true,
+      statusCode: 200
+    },
+    status: "success"
+  };
+
+  integrationLogs.unshift(log);
+  if (integrationLogs.length > 50) {
+    integrationLogs.pop();
+  }
+
+  res.json({ success: true, trainer, log });
+});
+
+// 2. Inbound module push or feedback from Vercel Trainer Hub back to Employees
+app.post("/api/vercel-hub/push-feedback", (req, res) => {
+  const { trainerId, module_name, feedback } = req.body;
+
+  const trainer = trainers.find(t => t.id === trainerId);
+  if (!trainer) {
+    return res.status(404).json({ error: "Trainer not found" });
+  }
+
+  if (!trainer.vercel_hub_modules) {
+    trainer.vercel_hub_modules = [];
+  }
+
+  const newModule = {
+    id: `module-${Date.now()}`,
+    module_name: module_name || "Custom Retraining Block",
+    assigned_at: new Date().toISOString(),
+    status: "assigned" as const,
+    feedback: feedback || "No feedback comments added"
+  };
+
+  trainer.vercel_hub_modules.push(newModule);
+
+  // Append inbound log
+  const logId = `log-in-${Date.now()}`;
+  const log: IntegrationLog = {
+    id: logId,
+    timestamp: new Date().toISOString(),
+    direction: "inbound",
+    endpoint: "https://petpooja-south-ops.vercel.app/api/vercel-hub/push-feedback",
+    payload: {
+      action: "ASSIGN_MODULE",
+      target_trainer: trainer.id,
+      employee_code: trainer.employee_code,
+      module_assigned: newModule.module_name,
+      feedback: newModule.feedback
+    },
+    response: {
+      received: true,
+      trainer_state_updated: true,
+      status: "success"
+    },
+    status: "success"
+  };
+
+  integrationLogs.unshift(log);
+  if (integrationLogs.length > 50) {
+    integrationLogs.pop();
+  }
+
+  // Create an alert in system for awareness
+  alerts.push({
+    id: `alert-module-${Date.now()}`,
+    type: "crm_miss", // Trigger training module alert style
+    trainer_id: trainer.id,
+    trainer_name: trainer.name,
+    tl_id: trainer.team_leader,
+    message: `Vercel Trainer Hub assigned a new learning module to ${trainer.name}: "${newModule.module_name}"`,
+    severity: "low",
+    timestamp: new Date().toISOString(),
+    resolved: false
+  });
+
+  res.json({ success: true, trainer, log });
+});
+
+// 3. Automated Performance Metric Reporting to Vercel Trainer Hub (Outbound scheduler simulation)
+app.post("/api/vercel-hub/trigger-automated-report", (req, res) => {
+  const activeCount = trainers.filter(t => t.is_checked_in).length;
+  const totalSessionsCount = sessions.length;
+  const avgSlaScore = Math.round(
+    trainers.reduce((acc, t) => acc + (t.vercel_hub_insights?.predicted_sla_score || 90), 0) / trainers.length
+  );
+
+  // Sentiment distribution
+  const sentimentCounts: Record<string, number> = {};
+  trainers.forEach(t => {
+    const sent = t.vercel_hub_insights?.sentiment_analysis || "Positive";
+    sentimentCounts[sent] = (sentimentCounts[sent] || 0) + 1;
+  });
+
+  const reportPayload = {
+    source: "petpooja-south-zone-ops",
+    timestamp: new Date().toISOString(),
+    reporting_period: "DAILY_TELEMETRY",
+    metrics: {
+      total_trainers: trainers.length,
+      active_checked_in_trainers: activeCount,
+      total_sessions_logged: totalSessionsCount,
+      average_predicted_sla_score: avgSlaScore,
+      sentiment_distributions: sentimentCounts,
+      critical_safety_alerts: alerts.filter(a => a.severity === "high" && !a.resolved).length,
+      unresolved_zoho_backlogs: trainers.reduce((acc, t) => acc + t.zoho_sync.open_tickets, 0)
+    }
+  };
+
+  // Append outbound log
+  const logId = `log-out-report-${Date.now()}`;
+  const log: IntegrationLog = {
+    id: logId,
+    timestamp: new Date().toISOString(),
+    direction: "outbound",
+    endpoint: "https://vercel-trainer-hub.petpooja.co/api/v1/automated-reports",
+    payload: reportPayload,
+    response: {
+      report_id: `rep-${Math.random().toString(36).substring(2, 9)}`,
+      received_at: new Date().toISOString(),
+      state: "PROCESSED_SUCCESSFULLY",
+      action: "WEBHOOK_TRIGGERED"
+    },
+    status: "success"
+  };
+
+  integrationLogs.unshift(log);
+  if (integrationLogs.length > 50) {
+    integrationLogs.pop();
+  }
+
+  res.json({ success: true, report: reportPayload, log });
+});
+
 // Helper function to call Gemini generateContent with retry logic to handle transient 503 errors
 async function generateContentWithRetry(prompt: string, sysInstruction: string, retries = 2, baseDelay = 300): Promise<string> {
   if (!ai) {
@@ -978,4 +1315,9 @@ async function startServer() {
   });
 }
 
-startServer();
+// Export app for serverless environments (e.g., Vercel)
+export default app;
+
+if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
+  startServer();
+}

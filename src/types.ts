@@ -37,6 +37,21 @@ export interface Trainer {
     last_sync: string;
   };
   skills?: string[];
+  vercel_hub_insights?: {
+    performance_prediction: string;
+    sentiment_analysis: string;
+    sentiment_score: number; // 0 to 100
+    risk_score: number; // 0 to 100
+    fatigue_level: "low" | "medium" | "high";
+    predicted_sla_score: number; // percentage
+  };
+  vercel_hub_modules?: Array<{
+    id: string;
+    module_name: string;
+    assigned_at: string;
+    status: "assigned" | "completed";
+    feedback: string;
+  }>;
 }
 
 export interface Merchant {
@@ -116,3 +131,11 @@ export interface Summary {
   availability_submitted_count: number;
   availability_missing_count: number;
 }
+
+export interface Toast {
+  id: string;
+  message: string;
+  type: "success" | "error" | "info" | "warning";
+  timestamp: string;
+}
+

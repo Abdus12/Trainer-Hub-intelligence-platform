@@ -2,13 +2,15 @@ import React, { useState } from "react";
 import { 
   User, Settings, Phone, Mail, MapPin, Map, Shield, 
   BookOpen, Clock, LogIn, LogOut, Camera, Clipboard, 
-  CheckCircle, ChevronRight, Lock, Eye, CheckCircle2, AlertCircle
+  CheckCircle, ChevronRight, Lock, Eye, CheckCircle2, AlertCircle,
+  Activity, Terminal, ArrowUpRight, ArrowDownLeft, Send, Check, RefreshCw, Layers
 } from "lucide-react";
 import { Trainer, Merchant } from "../types";
 
 interface ProfileTabProps {
   trainers: Trainer[];
   merchants: Merchant[];
+  integrationLogs?: any[];
   onRefreshState: () => void;
   onCheckIn: (trainerId: string, lat: number, lng: number) => void;
   onCheckOut: (trainerId: string, status: string, from: string, to: string, notes: string) => void;
@@ -16,9 +18,88 @@ interface ProfileTabProps {
 }
 
 export default function ProfileTab({ 
-  trainers, merchants, onRefreshState, onCheckIn, onCheckOut, onLogSession 
+  trainers, merchants, integrationLogs = [], onRefreshState, onCheckIn, onCheckOut, onLogSession 
 }: ProfileTabProps) {
   const [activeMode, setActiveMode] = useState<"manager" | "trainer">("manager");
+
+  // Vercel Hub Integration state variables
+  const [isPushingInsights, setIsPushingInsights] = useState<string | null>(null);
+  const [isPushingFeedback, setIsPushingFeedback] = useState<boolean>(false);
+  const [isTriggeringReport, setIsTriggeringReport] = useState<boolean>(false);
+  const [feedbackTrainerId, setFeedbackTrainerId] = useState<string>(trainers[0]?.id || "");
+  const [feedbackModule, setFeedbackModule] = useState<string>("POS Crash Prevention Guidelines");
+  const [feedbackNotesInput, setFeedbackNotesInput] = useState<string>("Trainer needs to cover hardware integration parameters on site.");
+  const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const handlePushInsights = async (trainerId: string) => {
+    setIsPushingInsights(trainerId);
+    setSuccessMsg(null);
+    try {
+      const res = await fetch("/api/vercel-hub/push-insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ trainerId })
+      });
+      if (!res.ok) throw new Error("Insights sync failed");
+      const data = await res.json();
+      onRefreshState();
+      setSuccessMsg(`Pushed AI insights for ${data.trainer?.name} to Vercel Trainer Hub.`);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setIsPushingInsights(null);
+    }
+  };
+
+  const handlePushFeedback = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!feedbackTrainerId) return;
+    setIsPushingFeedback(true);
+    setSuccessMsg(null);
+    try {
+      const res = await fetch("/api/vercel-hub/push-feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trainerId: feedbackTrainerId,
+          module_name: feedbackModule,
+          feedback: feedbackNotesInput
+        })
+      });
+      if (!res.ok) throw new Error("Feedback submission failed");
+      const data = await res.json();
+      onRefreshState();
+      setSuccessMsg(`Assigned retraining module "${feedbackModule}" to ${data.trainer?.name}.`);
+      setFeedbackNotesInput("");
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setIsPushingFeedback(false);
+    }
+  };
+
+  const handleTriggerAutomatedReport = async () => {
+    setIsTriggeringReport(true);
+    setSuccessMsg(null);
+    try {
+      const res = await fetch("/api/vercel-hub/trigger-automated-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      if (!res.ok) throw new Error("Automated metrics reporting failed");
+      await res.json();
+      onRefreshState();
+      setSuccessMsg("Automated metrics reporting completed successfully.");
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: any) {
+      console.error(err);
+    } finally {
+      setIsTriggeringReport(false);
+    }
+  };
   
   // Trainer Simulator selection state
   const [selectedSimTrainerId, setSelectedSimTrainerId] = useState<string>(trainers[0]?.id || "");
@@ -129,55 +210,443 @@ export default function ProfileTab({
 
       {activeMode === "manager" ? (
         /* Executive Profile Panel - Abdus Salam */
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          
-          {/* Left Column Profile info card */}
-          <div className="lg:col-span-4 bg-[#1A1D26] border border-gray-800 rounded-xl p-6 flex flex-col items-center text-center">
-            <div className="w-20 h-20 rounded-full bg-orange-500/10 border-2 border-[#FF6B00] flex items-center justify-center font-bold font-sans text-[#FF6B00] text-2xl relative">
-              AS
-              <span className="absolute bottom-1 right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-[#1A1D26] rounded-full animate-pulse"></span>
+        <div className="space-y-6 animate-fadeIn">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            {/* Left Column Profile info card */}
+            <div className="lg:col-span-4 bg-[#1A1D26] border border-gray-800 rounded-xl p-6 flex flex-col items-center text-center">
+              <div className="w-20 h-20 rounded-full bg-orange-500/10 border-2 border-[#FF6B00] flex items-center justify-center font-bold font-sans text-[#FF6B00] text-2xl relative">
+                AS
+                <span className="absolute bottom-1 right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-[#1A1D26] rounded-full animate-pulse"></span>
+              </div>
+
+              <h3 className="text-sm font-bold text-white mt-4">Abdus Salam</h3>
+              <span className="text-[10px] uppercase font-bold text-[#FF6B00] mt-0.5">Zonal Manager — South India Command</span>
+              <p className="text-[11px] text-gray-400 mt-2 max-w-[200px]">Overseeing merchant SaaS integrations, trainer SLAs, and operations compliance.</p>
+
+              <div className="w-full border-t border-gray-800/60 my-5 pt-4 space-y-2 text-left text-xs">
+                <p className="flex justify-between text-gray-400"><span className="text-gray-500">Command ID:</span> <span className="font-mono text-white">PJ-ZM-001</span></p>
+                <p className="flex justify-between text-gray-400"><span className="text-gray-500">Zonal Email:</span> <span className="text-white">abdus.salam74@gmail.com</span></p>
+                <p className="flex justify-between text-gray-400"><span className="text-gray-500">Primary Office:</span> <span className="text-white">Chennai Command HQ</span></p>
+              </div>
             </div>
 
-            <h3 className="text-sm font-bold text-white mt-4">Abdus Salam</h3>
-            <span className="text-[10px] uppercase font-bold text-[#FF6B00] mt-0.5">Zonal Manager — South India Command</span>
-            <p className="text-[11px] text-gray-400 mt-2 max-w-[200px]">Overseeing merchant SaaS integrations, trainer SLAs, and operations compliance.</p>
+            {/* Right Column: General Settings and Zone coverages */}
+            <div className="lg:col-span-8 bg-[#1A1D26] border border-gray-800 rounded-xl p-6 space-y-6">
+              <div>
+                <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-2">Zonal Command Settings</h3>
+                <p className="text-xs text-gray-400">Configure core synchronization parameters and target SLAs for the South zone.</p>
+              </div>
 
-            <div className="w-full border-t border-gray-800/60 my-5 pt-4 space-y-2 text-left text-xs">
-              <p className="flex justify-between text-gray-400"><span className="text-gray-500">Command ID:</span> <span className="font-mono text-white">PJ-ZM-001</span></p>
-              <p className="flex justify-between text-gray-400"><span className="text-gray-500">Zonal Email:</span> <span className="text-white">abdus.salam74@gmail.com</span></p>
-              <p className="flex justify-between text-gray-400"><span className="text-gray-500">Primary Office:</span> <span className="text-white">Chennai Command HQ</span></p>
+              {/* Custom parameters */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-3 bg-[#0F1117] border border-gray-800 rounded-lg">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Hourly Target SLA threshold</span>
+                  <span className="text-xl font-extrabold text-white mt-1 block">4 Sessions <span className="text-xs font-normal text-gray-500">/ Day</span></span>
+                </div>
+                <div className="p-3 bg-[#0F1117] border border-gray-800 rounded-lg">
+                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Automated Escalation Rule</span>
+                  <span className="text-xs font-semibold text-gray-300 mt-1.5 block">Trigger WhatsApp alert if &lt;4 Sessions by 3 PM</span>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-800/60 pt-4 space-y-3">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider">South Zone Jurisdiction Coverage</h4>
+                <div className="flex flex-wrap gap-2">
+                  <span className="px-2.5 py-1 bg-gray-800 text-gray-300 rounded text-xs">Tamil Nadu (Chennai, Coimbatore, Madurai)</span>
+                  <span className="px-2.5 py-1 bg-gray-800 text-gray-300 rounded text-xs">Karnataka (Bangalore)</span>
+                  <span className="px-2.5 py-1 bg-gray-800 text-gray-300 rounded text-xs">Andhra Pradesh (Vijayawada)</span>
+                  <span className="px-2.5 py-1 bg-gray-800 text-gray-300 rounded text-xs">Kerala (Kochi)</span>
+                  <span className="px-2.5 py-1 bg-gray-800 text-gray-300 rounded text-xs">Telangana (Hyderabad)</span>
+                </div>
+              </div>
             </div>
+
           </div>
 
-          {/* Right Column: General Settings and Zone coverages */}
-          <div className="lg:col-span-8 bg-[#1A1D26] border border-gray-800 rounded-xl p-6 space-y-6">
-            <div>
-              <h3 className="text-sm font-semibold text-white uppercase tracking-wider mb-2">Zonal Command Settings</h3>
-              <p className="text-xs text-gray-400">Configure core synchronization parameters and target SLAs for the South zone.</p>
+          {/* Vercel Backend Trainer Hub Integration Center Section */}
+          <div className="bg-[#1A1D26] border border-gray-800 rounded-xl p-6 space-y-6">
+            
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-800/60 pb-5">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-[#FF6B00]/10 border border-[#FF6B00]/30 rounded-lg text-[#FF6B00]">
+                    <Layers className="w-5 h-5" />
+                  </div>
+                  <h3 className="text-base font-bold text-white tracking-wide">Vercel Backend Trainer Hub Integration</h3>
+                </div>
+                <p className="text-xs text-gray-400">
+                  Bi-directional telemetry layer routing real-time AI performance insights, sentiments, and structured retraining module feedback.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="flex items-center gap-1.5 text-xs text-emerald-400 font-bold bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Connected to Vercel
+                </span>
+              </div>
             </div>
 
-            {/* Custom parameters */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-3 bg-[#0F1117] border border-gray-800 rounded-lg">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Hourly Target SLA threshold</span>
-                <span className="text-xl font-extrabold text-white mt-1 block">4 Sessions <span className="text-xs font-normal text-gray-500">/ Day</span></span>
+            {/* Banner/Notification of success */}
+            {successMsg && (
+              <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold rounded-lg flex items-center gap-2 animate-fadeIn">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span>{successMsg}</span>
               </div>
-              <div className="p-3 bg-[#0F1117] border border-gray-800 rounded-lg">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Automated Escalation Rule</span>
-                <span className="text-xs font-semibold text-gray-300 mt-1.5 block">Trigger WhatsApp alert if &lt;4 Sessions by 3 PM</span>
+            )}
+
+            {/* Two Column Control Hub Grid */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              
+              {/* Left Column: Automated reporting, Insights Push Matrix */}
+              <div className="space-y-6">
+                
+                {/* 1. Automated reporting card */}
+                <div className="bg-[#0F1117] border border-gray-800/80 rounded-xl p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-white uppercase tracking-widest flex items-center gap-2">
+                      <Activity className="w-4 h-4 text-blue-400" />
+                      Automated Performance Metric Reporting
+                    </h4>
+                    <span className="text-[10px] font-mono text-gray-500 bg-[#1A1D26] px-2 py-0.5 rounded border border-gray-800/60">
+                      Webhook Target
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    Pushes aggregated daily KPIs (employee check-in rates, active training counts, average predicted SLA compliant metrics, and emotional stress vectors) as structured telemetry payloads.
+                  </p>
+                  
+                  <div className="p-3.5 bg-[#111319] border border-gray-800/60 rounded-lg space-y-2.5">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500">Destination Endpoint:</span>
+                      <span className="font-mono text-gray-300 truncate max-w-[240px]" title="https://vercel-trainer-hub.petpooja.co/api/v1/automated-reports">https://vercel-trainer-hub.co/...</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-gray-500">Protocol Payload:</span>
+                      <span className="font-semibold text-[#FF6B00]">JSON Schema v2 (Secure REST)</span>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 pt-2 text-center text-[10px] border-t border-gray-800/40">
+                      <div className="bg-[#0F1117] p-2 rounded border border-gray-800/40">
+                        <span className="text-gray-500 block">Total Monitored</span>
+                        <span className="text-white font-bold text-xs">{trainers.length} Trainers</span>
+                      </div>
+                      <div className="bg-[#0F1117] p-2 rounded border border-gray-800/40">
+                        <span className="text-gray-500 block">Active Checked-In</span>
+                        <span className="text-emerald-400 font-bold text-xs">{trainers.filter(t => t.is_checked_in).length} Shift Active</span>
+                      </div>
+                      <div className="bg-[#0F1117] p-2 rounded border border-gray-800/40">
+                        <span className="text-gray-500 block">Avg Predicted SLA</span>
+                        <span className="text-orange-400 font-bold text-xs">
+                          {trainers.length > 0 ? Math.round(trainers.reduce((acc, t) => acc + (t.vercel_hub_insights?.predicted_sla_score || 90), 0) / trainers.length) : 95}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleTriggerAutomatedReport}
+                    disabled={isTriggeringReport}
+                    className="w-full py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-xs rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    {isTriggeringReport ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        Broadcasting Telemetry...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-3.5 h-3.5" />
+                        Trigger Automated Report Webhook
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* 2. Insights Push Matrix */}
+                <div className="bg-[#0F1117] border border-gray-800/80 rounded-xl p-5 space-y-4">
+                  <div className="flex items-center justify-between border-b border-gray-800/60 pb-3">
+                    <div className="space-y-0.5">
+                      <h4 className="text-xs font-bold text-white uppercase tracking-widest flex items-center gap-2">
+                        <ArrowUpRight className="w-4 h-4 text-[#FF6B00]" />
+                        Employee AI Insight Broadcaster
+                      </h4>
+                      <p className="text-[11px] text-gray-400">Push individual predictions & sentiments to Vercel registry.</p>
+                    </div>
+                  </div>
+
+                  <div className="max-h-[200px] overflow-y-auto space-y-2 pr-1">
+                    {trainers.map(t => {
+                      const ins = t.vercel_hub_insights;
+                      return (
+                        <div key={t.id} className="p-2.5 bg-[#111319] hover:bg-[#1A1D26] border border-gray-800/60 rounded-lg flex items-center justify-between text-xs transition">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-white font-bold">{t.name}</span>
+                              <span className="text-[10px] font-mono text-gray-500">{t.employee_code}</span>
+                            </div>
+                            <div className="flex items-center gap-3 text-[10px]">
+                              <span className="flex items-center gap-1">
+                                <span className="text-gray-500">Sentiment:</span>
+                                <span className={`font-semibold ${ins?.sentiment_analysis === "Stressed" ? "text-rose-400" : "text-emerald-400"}`}>
+                                  {ins?.sentiment_analysis || "Positive"}
+                                </span>
+                              </span>
+                              <span>
+                                <span className="text-gray-500">Fatigue:</span> <span className="text-orange-400">{ins?.fatigue_level || "low"}</span>
+                              </span>
+                              <span>
+                                <span className="text-gray-500">SLA Prediction:</span> <span className="text-white font-mono">{ins?.predicted_sla_score || 95}%</span>
+                              </span>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => handlePushInsights(t.id)}
+                            disabled={isPushingInsights === t.id}
+                            className="px-2.5 py-1.5 bg-gray-800 hover:bg-[#FF6B00] text-gray-300 hover:text-white rounded text-[10px] font-bold transition flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                          >
+                            {isPushingInsights === t.id ? (
+                              <RefreshCw className="w-3 h-3 animate-spin text-[#FF6B00]" />
+                            ) : (
+                              <ArrowUpRight className="w-3 h-3 text-[#FF6B00]" />
+                            )}
+                            Sync
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Right Column: Feedback and Training Module Simulator from Vercel Hub */}
+              <div className="space-y-6">
+                
+                {/* 3. Feedback push back simulator */}
+                <div className="bg-[#0F1117] border border-gray-800/80 rounded-xl p-5 space-y-4">
+                  <div className="flex items-center justify-between border-b border-gray-800/60 pb-3">
+                    <div className="space-y-0.5">
+                      <h4 className="text-xs font-bold text-white uppercase tracking-widest flex items-center gap-2">
+                        <ArrowDownLeft className="w-4 h-4 text-emerald-400" />
+                        Inbound Module & Feedback Gateway
+                      </h4>
+                      <p className="text-[11px] text-gray-400">Mock Vercel Trainer Hub pushing training courses to checked-in employees.</p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handlePushFeedback} className="space-y-4 text-xs">
+                    <div>
+                      <label className="text-gray-400 block mb-1 font-semibold">Target Employee *</label>
+                      <select
+                        value={feedbackTrainerId}
+                        onChange={(e) => setFeedbackTrainerId(e.target.value)}
+                        className="w-full bg-[#111319] border border-gray-800 text-xs text-white p-2 rounded-lg focus:outline-none focus:border-[#FF6B00]"
+                      >
+                        {trainers.map(t => (
+                          <option key={t.id} value={t.id}>{t.name} ({t.employee_code})</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="text-gray-400 block mb-1 font-semibold">Course / Retraining Module to Assign *</label>
+                      <input
+                        type="text"
+                        value={feedbackModule}
+                        onChange={(e) => setFeedbackModule(e.target.value)}
+                        className="w-full bg-[#111319] border border-gray-800 text-white rounded p-2 focus:outline-none focus:border-[#FF6B00]"
+                        placeholder="e.g. POS Crash Prevention & Router Port Configuration"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-gray-400 block mb-1 font-semibold">Actionable Feedback / Corrective Comments *</label>
+                      <textarea
+                        value={feedbackNotesInput}
+                        onChange={(e) => setFeedbackNotesInput(e.target.value)}
+                        className="w-full bg-[#111319] border border-gray-800 text-white rounded p-2 focus:outline-none focus:border-[#FF6B00] h-16 resize-none"
+                        placeholder="Assigning standalone offline client database walkthrough."
+                        required
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isPushingFeedback || !feedbackTrainerId}
+                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      {isPushingFeedback ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          Broadcasting Course...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          Assign Course from Vercel Hub
+                        </>
+                      )}
+                    </button>
+                  </form>
+                </div>
+
+                {/* 4. Active modules summary list */}
+                <div className="bg-[#0F1117] border border-gray-800/80 rounded-xl p-4 space-y-3">
+                  <h4 className="text-xs font-bold text-white uppercase tracking-widest">Active Retraining Assignments</h4>
+                  <div className="max-h-[120px] overflow-y-auto space-y-2 text-xs pr-1">
+                    {trainers.filter(t => t.vercel_hub_modules && t.vercel_hub_modules.length > 0).flatMap(t => 
+                      (t.vercel_hub_modules || []).map(m => (
+                        <div key={m.id} className="p-2.5 bg-[#111319] border border-gray-800/40 rounded flex items-center justify-between">
+                          <div className="space-y-0.5">
+                            <p className="font-semibold text-gray-200">{m.module_name}</p>
+                            <p className="text-[10px] text-gray-500">
+                              Assigned to <span className="text-[#FF6B00]">{t.name}</span> • {new Date(m.assigned_at).toLocaleTimeString()}
+                            </p>
+                          </div>
+                          <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase shrink-0 ${
+                            m.status === "completed" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                          }`}>
+                            {m.status}
+                          </span>
+                        </div>
+                      ))
+                    ).reverse()}
+                    {trainers.every(t => !t.vercel_hub_modules || t.vercel_hub_modules.length === 0) && (
+                      <p className="text-gray-500 text-center py-4 text-xs italic">No feedback modules active currently.</p>
+                    )}
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* Section 5: HTTP Webhook Log Console Terminal */}
+            <div className="bg-[#0F1117] border border-gray-800/80 rounded-xl p-5 space-y-3">
+              <div className="flex items-center justify-between border-b border-gray-800/60 pb-3">
+                <div className="space-y-0.5">
+                  <h4 className="text-xs font-bold text-white uppercase tracking-widest flex items-center gap-2">
+                    <Terminal className="w-4 h-4 text-[#FF6B00]" />
+                    Bi-Directional API Webhook Log Console
+                  </h4>
+                  <p className="text-[11px] text-gray-400 font-sans">Live telemetry stream between South Ops Monitoring App & Vercel Backend Hub.</p>
+                </div>
+                <button
+                  onClick={onRefreshState}
+                  className="p-1.5 hover:bg-gray-800 border border-gray-800 rounded text-gray-400 hover:text-white transition"
+                  title="Reload Integration Logs"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Logs Stream */}
+              <div className="font-mono text-[11px] space-y-2 max-h-[180px] overflow-y-auto bg-[#0A0C11] p-4 rounded-lg border border-gray-900 leading-relaxed scrollbar-thin">
+                {integrationLogs.map(log => {
+                  const isOut = log.direction === "outbound";
+                  return (
+                    <div 
+                      key={log.id} 
+                      onClick={() => setSelectedLogId(log.id)}
+                      className="group flex flex-col md:flex-row md:items-center justify-between p-2 hover:bg-gray-800/30 border border-transparent hover:border-gray-800/40 rounded transition cursor-pointer"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isOut ? "bg-blue-500/10 text-blue-400 border border-blue-500/20" : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"}`}>
+                          {isOut ? "OUTBOUND" : "INBOUND"}
+                        </span>
+                        <span className="text-gray-500">{new Date(log.timestamp).toLocaleTimeString()}</span>
+                        <span className="text-orange-400 font-bold">POST</span>
+                        <span className="text-gray-300 truncate max-w-[280px]" title={log.endpoint}>{log.endpoint}</span>
+                      </div>
+                      <div className="flex items-center gap-3 justify-between md:justify-end">
+                        <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2 rounded">200 OK</span>
+                        <span className="text-[10px] text-[#FF6B00] group-hover:underline flex items-center gap-0.5 cursor-pointer">
+                          Inspect <ChevronRight className="w-3 h-3" />
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {integrationLogs.length === 0 && (
+                  <p className="text-gray-500 text-center py-6 italic">Console listening. No REST triggers logged yet.</p>
+                )}
               </div>
             </div>
 
-            <div className="border-t border-gray-800/60 pt-4 space-y-3">
-              <h4 className="text-xs font-bold text-white uppercase tracking-wider">South Zone Jurisdiction Coverage</h4>
-              <div className="flex flex-wrap gap-2">
-                <span className="px-2.5 py-1 bg-gray-800 text-gray-300 rounded text-xs">Tamil Nadu (Chennai, Coimbatore, Madurai)</span>
-                <span className="px-2.5 py-1 bg-gray-800 text-gray-300 rounded text-xs">Karnataka (Bangalore)</span>
-                <span className="px-2.5 py-1 bg-gray-800 text-gray-300 rounded text-xs">Andhra Pradesh (Vijayawada)</span>
-                <span className="px-2.5 py-1 bg-gray-800 text-gray-300 rounded text-xs">Kerala (Kochi)</span>
-                <span className="px-2.5 py-1 bg-gray-800 text-gray-300 rounded text-xs">Telangana (Hyderabad)</span>
-              </div>
-            </div>
+            {/* Payload Inspection Modal */}
+            {selectedLogId && (() => {
+              const currentLog = integrationLogs.find(l => l.id === selectedLogId);
+              if (!currentLog) return null;
+              return (
+                <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+                  <div className="bg-[#1A1D26] border border-gray-800 rounded-xl p-6 w-full max-w-2xl space-y-4 font-mono text-xs">
+                    
+                    <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+                      <div className="flex items-center gap-2">
+                        <Terminal className="w-4 h-4 text-[#FF6B00]" />
+                        <h3 className="text-sm font-bold text-white uppercase tracking-wider">Payload Inspector</h3>
+                      </div>
+                      <button 
+                        onClick={() => setSelectedLogId(null)}
+                        className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded text-[11px] transition cursor-pointer font-sans"
+                      >
+                        Close
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-4 bg-[#0F1117] p-3 rounded-lg border border-gray-800/60">
+                        <div>
+                          <p className="text-gray-500 text-[10px] uppercase font-sans">HTTP Target URL</p>
+                          <p className="text-white font-bold truncate" title={currentLog.endpoint}>{currentLog.endpoint}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500 text-[10px] uppercase font-sans">Method & Status</p>
+                          <p className="text-emerald-400 font-bold">POST • 200 OK</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500 text-[10px] uppercase font-sans">Directional Protocol</p>
+                          <p className="text-gray-300">{currentLog.direction === "outbound" ? "HTTPS Outbound Telemetry" : "HTTPS Webhook Inbound Hook"}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-500 text-[10px] uppercase font-sans">Logged Timestamp</p>
+                          <p className="text-gray-300">{new Date(currentLog.timestamp).toLocaleString("en-IN")}</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-gray-400 font-bold mb-1 uppercase text-[10px] tracking-widest font-sans">HTTP Post Payload Body</p>
+                          <pre className="p-3 bg-[#07090D] border border-gray-900 rounded-lg text-emerald-400/90 overflow-x-auto text-[10px] h-[220px] scrollbar-thin">
+                            {JSON.stringify(currentLog.payload, null, 2)}
+                          </pre>
+                        </div>
+                        <div>
+                          <p className="text-gray-400 font-bold mb-1 uppercase text-[10px] tracking-widest font-sans">HTTP Response Body</p>
+                          <pre className="p-3 bg-[#07090D] border border-gray-900 rounded-lg text-blue-400/90 overflow-x-auto text-[10px] h-[220px] scrollbar-thin">
+                            {JSON.stringify(currentLog.response, null, 2)}
+                          </pre>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-2 border-t border-gray-800">
+                      <button 
+                        onClick={() => setSelectedLogId(null)}
+                        className="px-4 py-2 bg-[#FF6B00] hover:bg-orange-600 text-white font-bold rounded-lg transition font-sans cursor-pointer text-xs"
+                      >
+                        Acknowledge Protocol
+                      </button>
+                    </div>
+
+                  </div>
+                </div>
+              );
+            })()}
+
           </div>
 
         </div>
