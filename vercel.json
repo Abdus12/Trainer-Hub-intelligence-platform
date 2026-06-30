@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": "server.ts",
+      "src": "dist/server.cjs",
       "use": "@vercel/node",
       "config": {
         "includeFiles": ["dist/**", "firebase-applet-config.json"]
@@ -12,7 +12,7 @@
   "routes": [
     {
       "src": "/api/(.*)",
-      "dest": "server.ts"
+      "dest": "dist/server.cjs"
     },
     {
       "src": "/assets/(.*)",
@@ -20,7 +20,7 @@
     },
     {
       "src": "/(.*)",
-      "dest": "server.ts"
+      "dest": "dist/server.cjs"
     }
   ]
 }
