@@ -3,9 +3,17 @@ import path from "path";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import fs from "fs";
+import { initializeApp } from "firebase/app";
+import { getFirestore, collection, doc, getDocs, setDoc, deleteDoc } from "firebase/firestore";
 import { RAW_SOUTH_ZONE_TRAINERS, CITY_COORDS } from "./src/southZoneTrainersData";
 
 dotenv.config();
+
+// Initialize Firebase Web SDK for persistent Firestore
+const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
+const firebaseConfig = JSON.parse(fs.readFileSync(firebaseConfigPath, "utf8"));
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
 
 const app = express();
 app.use(express.json());
@@ -18,6 +26,18 @@ app.use((req, res, next) => {
     !req.headers.host?.includes("127.0.0.1")
   ) {
     return res.redirect(301, `https://${req.headers.host}${req.url}`);
+  }
+  next();
+});
+
+// Ensure database is loaded from Firestore before handling any API requests
+app.use(async (req, res, next) => {
+  if (req.path.startsWith("/api/")) {
+    try {
+      await ensureDatabase();
+    } catch (err) {
+      console.error("Error ensuring database in middleware:", err);
+    }
   }
   next();
 });
@@ -274,6 +294,148 @@ let scheduledDispatchLogs: any[] = [
 ];
 
 let lastSimulationTime = Date.now();
+
+// Firestore Synchronization & State Persistence Helpers
+let databaseLoaded = false;
+let lastLoadTime = 0;
+const CACHE_TTL_MS = 5000; // 5 seconds cache
+
+async function loadDatabaseFromFirestore() {
+  try {
+    console.log("Loading Trainer Hub database from Firestore...");
+    
+    // Load trainers
+    const trainersSnap = await getDocs(collection(db, "trainers"));
+    const loadedTrainers: Trainer[] = [];
+    trainersSnap.forEach(doc => loadedTrainers.push(doc.data() as Trainer));
+    
+    // Load merchants
+    const merchantsSnap = await getDocs(collection(db, "merchants"));
+    const loadedMerchants: Merchant[] = [];
+    merchantsSnap.forEach(doc => loadedMerchants.push(doc.data() as Merchant));
+
+    if (loadedTrainers.length === 0 || loadedMerchants.length === 0) {
+      console.log("Firestore database is empty. Seeding initial operations data...");
+      generateDatabase(); // This generates the initial memory state
+      await seedAllToFirestore();
+    } else {
+      trainers = loadedTrainers;
+      merchants = loadedMerchants;
+      
+      // Load sessions
+      const sessionsSnap = await getDocs(collection(db, "sessions"));
+      sessions = [];
+      sessionsSnap.forEach(doc => sessions.push(doc.data() as Session));
+      
+      // Load emailLogs
+      const emailLogsSnap = await getDocs(collection(db, "emailLogs"));
+      emailLogs = [];
+      emailLogsSnap.forEach(doc => emailLogs.push(doc.data() as EmailLog));
+      
+      // Load alerts
+      const alertsSnap = await getDocs(collection(db, "alerts"));
+      alerts = [];
+      alertsSnap.forEach(doc => alerts.push(doc.data() as Alert));
+      
+      // Load integrationLogs
+      const integrationLogsSnap = await getDocs(collection(db, "integrationLogs"));
+      integrationLogs = [];
+      integrationLogsSnap.forEach(doc => integrationLogs.push(doc.data() as IntegrationLog));
+      
+      // Load reportSchedules
+      const schedulesSnap = await getDocs(collection(db, "reportSchedules"));
+      const loadedSchedules: any[] = [];
+      schedulesSnap.forEach(doc => loadedSchedules.push(doc.data()));
+      if (loadedSchedules.length > 0) {
+        reportSchedules = loadedSchedules;
+      } else {
+        for (const s of reportSchedules) {
+          await setDoc(doc(db, "reportSchedules", s.id), s);
+        }
+      }
+      
+      // Load scheduledDispatchLogs
+      const dispatchSnap = await getDocs(collection(db, "scheduledDispatchLogs"));
+      const loadedDispatchLogs: any[] = [];
+      dispatchSnap.forEach(doc => loadedDispatchLogs.push(doc.data()));
+      if (loadedDispatchLogs.length > 0) {
+        scheduledDispatchLogs = loadedDispatchLogs;
+      } else {
+        for (const dl of scheduledDispatchLogs) {
+          await setDoc(doc(db, "scheduledDispatchLogs", dl.id), dl);
+        }
+      }
+      
+      console.log(`Successfully loaded ${trainers.length} trainers, ${merchants.length} merchants, ${sessions.length} sessions, ${alerts.length} alerts from Firestore.`);
+    }
+  } catch (error) {
+    console.error("Error loading database from Firestore, running with default memory DB:", error);
+    if (trainers.length === 0) {
+      generateDatabase();
+    }
+  }
+}
+
+async function seedAllToFirestore() {
+  console.log("Seeding all in-memory data to Firestore...");
+  try {
+    const promises: Promise<void>[] = [];
+    trainers.forEach(t => promises.push(setDoc(doc(db, "trainers", t.id), t)));
+    merchants.forEach(m => promises.push(setDoc(doc(db, "merchants", m.id), m)));
+    sessions.forEach(s => promises.push(setDoc(doc(db, "sessions", s.id), s)));
+    emailLogs.forEach(el => promises.push(setDoc(doc(db, "emailLogs", el.id), el)));
+    alerts.forEach(a => promises.push(setDoc(doc(db, "alerts", a.id), a)));
+    integrationLogs.forEach(il => promises.push(setDoc(doc(db, "integrationLogs", il.id), il)));
+    reportSchedules.forEach(rs => promises.push(setDoc(doc(db, "reportSchedules", rs.id), rs)));
+    scheduledDispatchLogs.forEach(sdl => promises.push(setDoc(doc(db, "scheduledDispatchLogs", sdl.id), sdl)));
+    await Promise.all(promises);
+    console.log("Database successfully seeded to Firestore.");
+  } catch (error) {
+    console.error("Error seeding to Firestore:", error);
+  }
+}
+
+async function persistState(collectionsToSync: string[]) {
+  try {
+    const promises: Promise<void>[] = [];
+    if (collectionsToSync.includes("trainers")) {
+      trainers.forEach(t => promises.push(setDoc(doc(db, "trainers", t.id), t)));
+    }
+    if (collectionsToSync.includes("merchants")) {
+      merchants.forEach(m => promises.push(setDoc(doc(db, "merchants", m.id), m)));
+    }
+    if (collectionsToSync.includes("sessions")) {
+      sessions.forEach(s => promises.push(setDoc(doc(db, "sessions", s.id), s)));
+    }
+    if (collectionsToSync.includes("emailLogs")) {
+      emailLogs.forEach(el => promises.push(setDoc(doc(db, "emailLogs", el.id), el)));
+    }
+    if (collectionsToSync.includes("alerts")) {
+      alerts.forEach(a => promises.push(setDoc(doc(db, "alerts", a.id), a)));
+    }
+    if (collectionsToSync.includes("integrationLogs")) {
+      integrationLogs.forEach(il => promises.push(setDoc(doc(db, "integrationLogs", il.id), il)));
+    }
+    if (collectionsToSync.includes("reportSchedules")) {
+      reportSchedules.forEach(rs => promises.push(setDoc(doc(db, "reportSchedules", rs.id), rs)));
+    }
+    if (collectionsToSync.includes("scheduledDispatchLogs")) {
+      scheduledDispatchLogs.forEach(sdl => promises.push(setDoc(doc(db, "scheduledDispatchLogs", sdl.id), sdl)));
+    }
+    await Promise.all(promises);
+  } catch (error) {
+    console.error("Error persisting state to Firestore:", error);
+  }
+}
+
+async function ensureDatabase() {
+  const now = Date.now();
+  if (!databaseLoaded || (now - lastLoadTime > CACHE_TTL_MS)) {
+    await loadDatabaseFromFirestore();
+    databaseLoaded = true;
+    lastLoadTime = now;
+  }
+}
 
 function generateDatabase() {
   trainers = [];
@@ -663,8 +825,8 @@ function generateAlerts() {
   });
 }
 
-// Perform initial database generation
-generateDatabase();
+// Perform initial database generation or load from Firestore
+loadDatabaseFromFirestore();
 
 // ==========================================
 // SIMULATION UPDATE RUNNER
@@ -857,7 +1019,7 @@ app.get("/api/state", (req, res) => {
 });
 
 // Trigger client session update
-app.post("/api/session", (req, res) => {
+app.post("/api/session", async (req, res) => {
   const { trainerId, merchantName, merchantEmail, module, sessionType, modulesCovered, notes, duration, nextSessionDate } = req.body;
 
   const trainer = trainers.find(t => t.id === trainerId);
@@ -940,11 +1102,13 @@ app.post("/api/session", (req, res) => {
 
   generateAlerts();
 
+  await persistState(["trainers", "merchants", "sessions", "emailLogs", "alerts"]);
+
   res.json({ success: true, session: newSess });
 });
 
 // Gated Trainer Checkout & Availability Submission
-app.post("/api/checkout", (req, res) => {
+app.post("/api/checkout", async (req, res) => {
   const { trainerId, availabilityStatus, availableFrom, availableUntil, notes } = req.body;
 
   const trainer = trainers.find(t => t.id === trainerId);
@@ -971,11 +1135,13 @@ app.post("/api/checkout", (req, res) => {
 
   generateAlerts();
 
+  await persistState(["trainers", "alerts"]);
+
   res.json({ success: true, trainer });
 });
 
 // Trainer Check-In
-app.post("/api/checkin", (req, res) => {
+app.post("/api/checkin", async (req, res) => {
   const { trainerId, lat, lng } = req.body;
 
   const trainer = trainers.find(t => t.id === trainerId);
@@ -998,11 +1164,13 @@ app.post("/api/checkin", (req, res) => {
 
   generateAlerts();
 
+  await persistState(["trainers", "alerts"]);
+
   res.json({ success: true, trainer });
 });
 
 // Manual Email Retry Trigger
-app.post("/api/retry-email", (req, res) => {
+app.post("/api/retry-email", async (req, res) => {
   const { logId } = req.body;
   const log = emailLogs.find(e => e.id === logId);
   if (!log) {
@@ -1025,20 +1193,23 @@ app.post("/api/retry-email", (req, res) => {
 
   generateAlerts();
 
+  await persistState(["emailLogs", "sessions", "alerts"]);
+
   res.json({ success: true, log });
 });
 
 // Force Sync Petpooja Track App
-app.post("/api/leadsquared/sync", (req, res) => {
+app.post("/api/leadsquared/sync", async (req, res) => {
   trainers.forEach(t => {
     t.leadsquared_sync.last_sync = new Date().toISOString();
     t.leadsquared_sync.activities_today += Math.floor(Math.random() * 2);
   });
+  await persistState(["trainers"]);
   res.json({ success: true, message: "Petpooja Track App forced synchronisation completed." });
 });
 
 // Force Sync Zoho Desk Tickets
-app.post("/api/zoho/sync", (req, res) => {
+app.post("/api/zoho/sync", async (req, res) => {
   trainers.forEach(t => {
     t.zoho_sync.last_sync = new Date().toISOString();
     // randomly resolve or change tickets
@@ -1048,15 +1219,17 @@ app.post("/api/zoho/sync", (req, res) => {
     }
   });
   generateAlerts();
+  await persistState(["trainers", "alerts"]);
   res.json({ success: true, message: "Zoho Desk tickets forced synchronisation completed." });
 });
 
 // Simulation Trigger to produce specific states for demonstration
-app.post("/api/simulation/trigger", (req, res) => {
+app.post("/api/simulation/trigger", async (req, res) => {
   const { action } = req.body;
 
   if (action === "reset") {
     generateDatabase();
+    await seedAllToFirestore();
   } else if (action === "trigger_breach") {
     // Force some trainers to have 0 sessions past 3 PM
     trainers.slice(0, 10).forEach(t => {
@@ -1086,6 +1259,9 @@ app.post("/api/simulation/trigger", (req, res) => {
   }
 
   generateAlerts();
+
+  await persistState(["trainers", "sessions", "emailLogs", "alerts"]);
+
   res.json({ success: true, message: `Simulation event '${action}' triggered.` });
 });
 
@@ -1094,7 +1270,7 @@ app.post("/api/simulation/trigger", (req, res) => {
 // ============================================================================
 
 // 1. Push Employee Insights to Vercel Trainer Hub (Outbound telemetry)
-app.post("/api/vercel-hub/push-insights", (req, res) => {
+app.post("/api/vercel-hub/push-insights", async (req, res) => {
   const { trainerId, performance_prediction, sentiment_analysis, sentiment_score, risk_score, fatigue_level, predicted_sla_score } = req.body;
 
   const trainer = trainers.find(t => t.id === trainerId);
@@ -1142,11 +1318,13 @@ app.post("/api/vercel-hub/push-insights", (req, res) => {
     integrationLogs.pop();
   }
 
+  await persistState(["trainers", "integrationLogs"]);
+
   res.json({ success: true, trainer, log });
 });
 
 // 2. Inbound module push or feedback from Vercel Trainer Hub back to Employees
-app.post("/api/vercel-hub/push-feedback", (req, res) => {
+app.post("/api/vercel-hub/push-feedback", async (req, res) => {
   const { trainerId, module_name, feedback } = req.body;
 
   const trainer = trainers.find(t => t.id === trainerId);
@@ -1208,11 +1386,13 @@ app.post("/api/vercel-hub/push-feedback", (req, res) => {
     resolved: false
   });
 
+  await persistState(["trainers", "integrationLogs", "alerts"]);
+
   res.json({ success: true, trainer, log });
 });
 
 // 3. Automated Performance Metric Reporting to Vercel Trainer Hub (Outbound scheduler simulation)
-app.post("/api/vercel-hub/trigger-automated-report", (req, res) => {
+app.post("/api/vercel-hub/trigger-automated-report", async (req, res) => {
   const activeCount = trainers.filter(t => t.is_checked_in).length;
   const totalSessionsCount = sessions.length;
   const avgSlaScore = Math.round(
@@ -1263,6 +1443,8 @@ app.post("/api/vercel-hub/trigger-automated-report", (req, res) => {
     integrationLogs.pop();
   }
 
+  await persistState(["integrationLogs"]);
+
   res.json({ success: true, report: reportPayload, log });
 });
 
@@ -1280,7 +1462,7 @@ app.get("/api/report-schedules", (req, res) => {
 });
 
 // 2. Create or update schedule
-app.post("/api/report-schedules", (req, res) => {
+app.post("/api/report-schedules", async (req, res) => {
   const { id, reportType, frequency, time, daysOfWeek, recipients, active } = req.body;
 
   if (!reportType || !frequency || !time || !recipients || !Array.isArray(recipients) || recipients.length === 0) {
@@ -1302,6 +1484,7 @@ app.post("/api/report-schedules", (req, res) => {
       recipients,
       active: active !== undefined ? active : reportSchedules[index].active
     };
+    await persistState(["reportSchedules"]);
     return res.json({ success: true, schedule: reportSchedules[index] });
   } else {
     // Create
@@ -1317,12 +1500,13 @@ app.post("/api/report-schedules", (req, res) => {
       lastDispatchedAt: null
     };
     reportSchedules.push(newSchedule);
+    await persistState(["reportSchedules"]);
     return res.json({ success: true, schedule: newSchedule });
   }
 });
 
 // 3. Delete schedule
-app.delete("/api/report-schedules/:id", (req, res) => {
+app.delete("/api/report-schedules/:id", async (req, res) => {
   const { id } = req.params;
   const index = reportSchedules.findIndex(s => s.id === id);
   if (index === -1) {
@@ -1331,11 +1515,17 @@ app.delete("/api/report-schedules/:id", (req, res) => {
   const deleted = reportSchedules.splice(index, 1)[0];
   // Clean up logs associated with this schedule
   scheduledDispatchLogs = scheduledDispatchLogs.filter(l => l.scheduleId !== id);
+  try {
+    await deleteDoc(doc(db, "reportSchedules", id));
+  } catch (error) {
+    console.error("Error deleting schedule from Firestore:", error);
+  }
+  await persistState(["scheduledDispatchLogs"]);
   res.json({ success: true, deletedSchedule: deleted });
 });
 
 // 4. Trigger manual test dispatch
-app.post("/api/report-schedules/trigger-test", (req, res) => {
+app.post("/api/report-schedules/trigger-test", async (req, res) => {
   const { id } = req.body;
   const schedule = reportSchedules.find(s => s.id === id);
   if (!schedule) {
@@ -1404,6 +1594,8 @@ app.post("/api/report-schedules/trigger-test", (req, res) => {
     timestamp: new Date().toISOString(),
     resolved: true
   });
+
+  await persistState(["reportSchedules", "scheduledDispatchLogs", "emailLogs", "alerts"]);
 
   res.json({ success: true, log: newLog, schedules: reportSchedules, logs: scheduledDispatchLogs });
 });

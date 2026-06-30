@@ -1,0 +1,175 @@
+{
+  "entities": {
+    "trainer": {
+      "title": "Trainer",
+      "description": "A training officer and their status and metrics.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "team_leader": { "type": "string" },
+        "state": { "type": "string" },
+        "employee_code": { "type": "string" },
+        "phone": { "type": "string" },
+        "is_checked_in": { "type": "boolean" },
+        "check_in_time": { "type": "string" },
+        "check_out_time": { "type": "string" }
+      },
+      "required": ["id", "name", "email"]
+    },
+    "merchant": {
+      "title": "Merchant",
+      "description": "A partner merchant outlet associated with trainers.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "contact_person": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "outlet_name": { "type": "string" },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "assigned_trainer_id": { "type": "string" }
+      },
+      "required": ["id", "name", "email"]
+    },
+    "session": {
+      "title": "Session",
+      "description": "A training session scheduled or completed.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "trainer_id": { "type": "string" },
+        "trainer_name": { "type": "string" },
+        "trainer_email": { "type": "string" },
+        "merchant_id": { "type": "string" },
+        "merchant_name": { "type": "string" },
+        "merchant_email": { "type": "string" },
+        "session_type": { "type": "string" },
+        "module": { "type": "string" },
+        "start_time": { "type": "string" },
+        "end_time": { "type": "string" },
+        "duration_minutes": { "type": "number" },
+        "notes": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "trainer_id", "merchant_id"]
+    },
+    "emailLog": {
+      "title": "EmailLog",
+      "description": "Outbound email logs tracking reports and receipts.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "session_id": { "type": "string" },
+        "trainer_id": { "type": "string" },
+        "merchant_name": { "type": "string" },
+        "to_merchant": { "type": "string" },
+        "to_ops": { "type": "string" },
+        "subject": { "type": "string" },
+        "sent_at": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "subject", "sent_at"]
+    },
+    "alert": {
+      "title": "Alert",
+      "description": "An operational or compliance alert raised by the system.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string" },
+        "trainer_id": { "type": "string" },
+        "trainer_name": { "type": "string" },
+        "message": { "type": "string" },
+        "severity": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "resolved": { "type": "boolean" }
+      },
+      "required": ["id", "type", "message"]
+    },
+    "integrationLog": {
+      "title": "IntegrationLog",
+      "description": "Log entry tracking synchronization with external CRM APIs.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "source": { "type": "string" },
+        "status": { "type": "string" },
+        "message": { "type": "string" }
+      },
+      "required": ["id", "timestamp"]
+    },
+    "reportSchedule": {
+      "title": "ReportSchedule",
+      "description": "A scheduled automated report broadcast configuration.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "reportType": { "type": "string" },
+        "frequency": { "type": "string" },
+        "time": { "type": "string" },
+        "daysOfWeek": { "type": "array" },
+        "recipients": { "type": "array" },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "lastDispatchedAt": { "type": "string" }
+      },
+      "required": ["id", "reportType", "frequency", "time", "recipients"]
+    },
+    "scheduledDispatchLog": {
+      "title": "ScheduledDispatchLog",
+      "description": "A run log generated from automated scheduler executions.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "scheduleId": { "type": "string" },
+        "reportType": { "type": "string" },
+        "frequency": { "type": "string" },
+        "recipients": { "type": "array" },
+        "dispatchedAt": { "type": "string" },
+        "status": { "type": "string" },
+        "subject": { "type": "string" },
+        "message": { "type": "string" }
+      },
+      "required": ["id", "scheduleId", "dispatchedAt"]
+    }
+  },
+  "firestore": {
+    "/trainers/{trainerId}": {
+      "schema": "trainer",
+      "description": "Trainers details collection."
+    },
+    "/merchants/{merchantId}": {
+      "schema": "merchant",
+      "description": "Merchants details collection."
+    },
+    "/sessions/{sessionId}": {
+      "schema": "session",
+      "description": "All scheduled and logged sessions."
+    },
+    "/emailLogs/{logId}": {
+      "schema": "emailLog",
+      "description": "Outbound session training reports and receipts email logs."
+    },
+    "/alerts/{alertId}": {
+      "schema": "alert",
+      "description": "Zonal system SLA and compliance alert logs."
+    },
+    "/integrationLogs/{logId}": {
+      "schema": "integrationLog",
+      "description": "CRM integration sync logs (LeadSquared, Zoho, etc.)."
+    },
+    "/reportSchedules/{scheduleId}": {
+      "schema": "reportSchedule",
+      "description": "Scheduled recurring operations reports configurations."
+    },
+    "/scheduledDispatchLogs/{logId}": {
+      "schema": "scheduledDispatchLog",
+      "description": "Dispatch run history logs."
+    }
+  }
+}
