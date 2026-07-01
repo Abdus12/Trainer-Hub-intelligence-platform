@@ -15,17 +15,44 @@ interface MerchantIntelligenceProps {
 export default function MerchantIntelligence({ merchants, sessions, trainers }: MerchantIntelligenceProps) {
   const [search, setSearch] = useState("");
   const [selectedState, setSelectedState] = useState("all");
+  const [selectedStatus, setSelectedStatus] = useState("all");
   const [selectedMerchantId, setSelectedMerchantId] = useState<string | null>(
     merchants.length > 0 ? merchants[0].id : null
   );
 
+  // Helper functions for merchant training status
+  const getTrainingStatusKey = (m: Merchant) => {
+    const completedCount = sessions.filter(s => s.merchant_id === m.id && s.status === "completed").length;
+    if (completedCount >= 3) return "fully_trained";
+    if (completedCount > 0) return "partially_trained";
+    return "untrained";
+  };
+
+  const getTrainingStatusLabel = (m: Merchant) => {
+    const completedCount = sessions.filter(s => s.merchant_id === m.id && s.status === "completed").length;
+    if (completedCount >= 3) return "Fully Trained";
+    if (completedCount > 0) return "Partially Trained";
+    return "Untrained (At Risk)";
+  };
+
   // Filter merchants based on inputs
   const filteredMerchants = merchants.filter(m => {
-    const matchesSearch = m.name.toLowerCase().includes(search.toLowerCase()) || 
-                          m.outlet_name.toLowerCase().includes(search.toLowerCase()) ||
-                          m.city.toLowerCase().includes(search.toLowerCase());
+    const statusKey = getTrainingStatusKey(m);
+    const statusLabel = getTrainingStatusLabel(m);
+    
+    // Search can match merchant name, outlet name, contact person, city, state/zone, or training status text
+    const matchesSearch = 
+      m.name.toLowerCase().includes(search.toLowerCase()) || 
+      m.outlet_name.toLowerCase().includes(search.toLowerCase()) ||
+      m.contact_person.toLowerCase().includes(search.toLowerCase()) ||
+      m.city.toLowerCase().includes(search.toLowerCase()) ||
+      m.state.toLowerCase().includes(search.toLowerCase()) ||
+      statusLabel.toLowerCase().includes(search.toLowerCase());
+
     const matchesState = selectedState === "all" || m.state === selectedState;
-    return matchesSearch && matchesState;
+    const matchesStatus = selectedStatus === "all" || statusKey === selectedStatus;
+
+    return matchesSearch && matchesState && matchesStatus;
   });
 
   const activeMerchant = merchants.find(m => m.id === selectedMerchantId) || merchants[0];
@@ -91,30 +118,46 @@ export default function MerchantIntelligence({ merchants, sessions, trainers }: 
               <Search className="absolute left-3 top-3 w-4 h-4 text-gray-500" />
               <input 
                 type="text" 
-                placeholder="Search outlets, contact..." 
+                placeholder="Search name, zone, state, status..." 
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="w-full bg-[#181B26] border border-gray-800 rounded-xl py-2 pl-9 pr-4 text-xs text-white focus:outline-none focus:border-[#FF6B00] transition"
               />
             </div>
 
-            <select 
-              value={selectedState}
-              onChange={e => setSelectedState(e.target.value)}
-              className="w-full bg-[#181B26] border border-gray-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
-            >
-              <option value="all">All States</option>
-              <option value="Tamil Nadu">Tamil Nadu</option>
-              <option value="Karnataka">Karnataka</option>
-              <option value="Kerala">Kerala</option>
-              <option value="Andhra Pradesh">Andhra Pradesh</option>
-              <option value="Telangana">Telangana</option>
-            </select>
+            <div className="grid grid-cols-2 gap-2">
+              <select 
+                value={selectedState}
+                onChange={e => setSelectedState(e.target.value)}
+                className="w-full bg-[#181B26] border border-gray-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-[#FF6B00] transition"
+              >
+                <option value="all">All Zones / States</option>
+                <option value="Tamil Nadu">Tamil Nadu</option>
+                <option value="Karnataka">Karnataka</option>
+                <option value="Kerala">Kerala</option>
+                <option value="Andhra Pradesh">Andhra Pradesh</option>
+                <option value="Telangana">Telangana</option>
+              </select>
+
+              <select 
+                value={selectedStatus}
+                onChange={e => setSelectedStatus(e.target.value)}
+                className="w-full bg-[#181B26] border border-gray-800 rounded-xl px-2.5 py-2 text-xs text-white focus:outline-none focus:border-[#FF6B00] transition"
+              >
+                <option value="all">All Statuses</option>
+                <option value="fully_trained">Fully Trained</option>
+                <option value="partially_trained">Partially Trained</option>
+                <option value="untrained">Untrained / At Risk</option>
+              </select>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-2 pr-1">
             {filteredMerchants.map(m => {
               const hScore = calculateHealthScore(m);
+              const statusKey = getTrainingStatusKey(m);
+              const statusLabel = getTrainingStatusLabel(m);
+              
               return (
                 <button
                   key={m.id}
@@ -125,15 +168,24 @@ export default function MerchantIntelligence({ merchants, sessions, trainers }: 
                       : "bg-[#141722] border-gray-800/60 hover:bg-[#1C1F2E] text-gray-300"
                   }`}
                 >
-                  <div className="truncate">
-                    <h4 className="text-xs font-bold truncate">{m.name}</h4>
-                    <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1">
-                      <MapPin className="w-2.5 h-2.5" />
-                      {m.city}, {m.state}
+                  <div className="truncate flex-1">
+                    <h4 className="text-xs font-bold truncate text-white">{m.name}</h4>
+                    <p className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-1 truncate">
+                      <MapPin className="w-2.5 h-2.5 shrink-0" />
+                      <span className="truncate">{m.city}, {m.state}</span>
                     </p>
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                        statusKey === "fully_trained" ? "bg-emerald-400 animate-pulse" :
+                        statusKey === "partially_trained" ? "bg-amber-400" : "bg-rose-500"
+                      }`} />
+                      <span className="text-[9px] text-gray-400 font-medium truncate">
+                        {statusLabel}
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="text-right">
+                  <div className="text-right shrink-0">
                     <span className={`text-[10px] font-mono font-black ${
                       hScore >= 90 ? "text-emerald-400" :
                       hScore >= 75 ? "text-amber-400" : "text-rose-500"
