@@ -682,6 +682,11 @@ export default function ProfileTab({
               <div className="font-mono text-[11px] space-y-2 max-h-[180px] overflow-y-auto bg-[#0A0C11] p-4 rounded-lg border border-gray-900 leading-relaxed scrollbar-thin">
                 {integrationLogs.map(log => {
                   const isOut = log.direction === "outbound";
+                  const isSuccess = log.status === "success";
+                  const statusLabel = log.response?.statusCode 
+                    ? `${log.response.statusCode} ${log.response.statusText || ""}`.trim()
+                    : isSuccess ? "200 OK" : "ERROR / FAIL";
+                  
                   return (
                     <div 
                       key={log.id} 
@@ -697,7 +702,13 @@ export default function ProfileTab({
                         <span className="text-gray-300 truncate max-w-[280px]" title={log.endpoint}>{log.endpoint}</span>
                       </div>
                       <div className="flex items-center gap-3 justify-between md:justify-end">
-                        <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2 rounded">200 OK</span>
+                        <span className={`font-bold px-2 rounded text-[10px] ${
+                          isSuccess 
+                            ? "text-emerald-400 bg-emerald-500/10 border border-emerald-500/20" 
+                            : "text-rose-400 bg-rose-500/10 border border-rose-500/20"
+                        }`}>
+                          {statusLabel}
+                        </span>
                         <span className="text-[10px] text-[#FF6B00] group-hover:underline flex items-center gap-0.5 cursor-pointer">
                           Inspect <ChevronRight className="w-3 h-3" />
                         </span>
@@ -740,7 +751,9 @@ export default function ProfileTab({
                         </div>
                         <div>
                           <p className="text-gray-500 text-[10px] uppercase font-sans">Method & Status</p>
-                          <p className="text-emerald-400 font-bold">POST • 200 OK</p>
+                          <p className={`${currentLog.status === "success" ? "text-emerald-400" : "text-rose-400"} font-bold`}>
+                            POST • {currentLog.response?.statusCode || (currentLog.status === "success" ? "200" : "ERROR")} {currentLog.response?.statusText || (currentLog.status === "success" ? "OK" : "FAIL")}
+                          </p>
                         </div>
                         <div>
                           <p className="text-gray-500 text-[10px] uppercase font-sans">Directional Protocol</p>

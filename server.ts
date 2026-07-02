@@ -1213,14 +1213,116 @@ app.post("/api/retry-email", async (req, res) => {
   res.json({ success: true, log });
 });
 
-// Force Sync Petpooja Track App
+// Force Sync Petpooja Track App with real external API call
 app.post("/api/leadsquared/sync", async (req, res) => {
-  trainers.forEach(t => {
-    t.leadsquared_sync.last_sync = new Date().toISOString();
-    t.leadsquared_sync.activities_today += Math.floor(Math.random() * 2);
-  });
-  await persistState(["trainers"]);
-  res.json({ success: true, message: "Petpooja Track App forced synchronisation completed." });
+  const customPath = req.body?.path || "/api/v1/leadsquared/sync";
+  const baseUrl = process.env.PETPOOJA_API_URL || "https://marketplaceadminnew.petpooja.com";
+  
+  // Clean up paths
+  const cleanPath = customPath.startsWith("/") ? customPath : `/${customPath}`;
+  const syncEndpoint = `${baseUrl}${cleanPath}`;
+  
+  // Provided by user
+  const cookies = process.env.PETPOOJA_REFRESH_TOKEN || "refresh_token=s%3AeyJtZXNzYWdlIjoiZXlKaGJHY2lPaUpJVXpJMU5pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SjFjMlZ5U1dRaU9qWXlOU3dpWlcxaGFXd2lPaUpoWW1SMWN5NXpZV3hoYlVCd1pYUndiMjlxWVM1amIyMGlMQ0p5YjJ4bFNXUWlPak16TENKMGVYQmxJam9pY21WbWNtVnphQ0lzSW1saGRDSTZNVGM0TXpBd016UTJOaXdpWlhod0lqb3hOemd6TmpBNE1qWTJMQ0poZFdRaU9pSnRZWEpyWlhSd2JHRmpaUzFoWkcxcGJpMW1jbTl1ZEdWdVpDSXNJbWx6Y3lJNkltMWhjbXRsZEhCc1lXTmxMV0ZrYldsdUluMC5aRWhqWlp6bFVhMmozcWwzVmRubVB2MzZzSUh1a1ZBZE1Cb1JvTVdfZF84IiwicHVycG9zZSI6InJlZnJlc2hfdG9rZW4ifQ.SvLQSna1OHVIdk6Ycv_tu2dYgpnB6MAqe6p_1KrMxUg; _fbp=fb.1.1770355734218.232032194215822459; hubspotutk=cc3c4b454a766d3310f2834ee19b6396; _clck=fxhav4%5E2%5Eg4f%5E0%5E2260; _uetvid=757fb150b23c11efba462729cb5ad0e1; _sp_id.e204=92b0fbc5-4d16-463e-abcc-4a5e2325fdbd.1773119269.2.1773723986.1773119269.65b7ea6f-dd49-4ae8-bb47-4b9235ab9e50.52fe2786-b900-4e5c-ae63-c1bd2a566fe5.b3bff425-561a-4f7d-8954-17882be90d88.1773723986491.1; _ga_3CS34FZTGS=GS2.1.s1773723980$o2$g1$t1773724112$j60$l0$h0; _ga_JLNZ42FC95=GS2.1.s1776399228$o8$g1$t1776400136$j5$l0$h0; _ga_KL79SLEQ04=GS2.1.s1776399228$o8$g1$t1776400136$j5$l0$h0; _cs_c=0; _gcl_au=1.1.285687151.1779339187; ph_phc_dpO0VweySkNQJBDn1LPxElWuQJvR6lMfDQbnfo2BRMz_posthog=%7B%22distinct_id%22%3A%220199e122-ef48-7a2c-87c2-1fc9469e1c67%22%2C%22%24sesid%22%3A%5B1780979438825%2C%22019eaaa5-93fd-7ec8-8ec5-6428a2f33513%22%2C1780979438567%5D%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22%24direct%22%2C%22u%22%3A%22https%3A%2F%2Freservations.petpooja.com%2F%22%7D%7D; ph_phc_73hcaRJq09vh9V1531beEfOZKc9AcCe3nXb2BojSgkE_posthog=%7B%22%24device_id%22%3A%22019cd62c-ed0b-7960-8c83-e954dc9e5637%22%2C%22distinct_id%22%3A%2230827%22%2C%22%24sesid%22%3A%5Bnull%2Cnull%2Cnull%5D%2C%22%24epp%22%3Atrue%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22%24direct%22%2C%22u%22%3A%22https%3A%2F%2Ffinance.petpooja.com%2F%22%7D%2C%22%24user_state%22%3A%22identified%22%7D; _ga_BDE4S7R9FR=GS2.1.s1782711648$o1$g1$t1782715808$j60$l0$h0; _ga_J0CMTHYQ69=GS2.1.s1782880597$o17$g0$t1782880597$j60$l0$h0; __hstc=101713182.cc3c4b454a766d3310f2834ee19b6396.1770355736627.1781586547248.1782880597635.12; _hjSessionUser_6672043=eyJpZCI6ImViNWVmMWUwLTI3YmItNTNiMy1hYWZlLTZlNTZkMDRmYWMxNSIsImNyZWF0ZWQiOjE3ODI4ODQ1Mzg5MzksImV4aXN0aW5nIjpmYWxzZX0=; _ga=GA1.2.721613878.1770355736; ph_phc_zNJeXNwkPdEVqiBcp9XMcJW8QTPhrqZ6trGPYbmBuph6_posthog=%7B%22%24device_id%22%3A%22019ecef1-7428-75f5-b917-c379d64011bb%22%2C%22distinct_id%22%3A%22019ecef1-7428-75f5-b917-c379d64011bb%22%2C%22%24sesid%22%3A%5B1782884577990%2C%22019f1c32-da35-7f2c-af12-68ebd075d3dd%22%2C1782884522486%5D%2C%22%24initial_person_info%22%3A%7B%22r%22%3A%22%24direct%22%2C%22u%22%3A%22https%3A%2F%2Fbilling.petpooja.com%2F%22%7D%2C%22%24user_state%22%3A%22anonymous%22%7D; _ga_3PQV3C1C97=GS2.1.s1782884520$o60$g1$t1782884579$j1$l0$h0; _ga_0S9CB0DKJH=GS2.1.s1782884523$o60$g1$t1782884579$j4$l0$h0";
+
+  const syncPayload = {
+    sync_timestamp: new Date().toISOString(),
+    operator: "Abdus Salam",
+    trainers_count: trainers.length,
+    active_trainers: trainers.filter(t => t.is_checked_in).length,
+    today_sessions_count: sessions.length,
+    trainers_metrics: trainers.map(t => ({
+      id: t.id,
+      name: t.name,
+      employee_code: t.employee_code,
+      today_sessions: t.today_sessions,
+      is_checked_in: t.is_checked_in,
+      last_sync: new Date().toISOString()
+    }))
+  };
+
+  const logId = `log-sync-${Date.now()}`;
+  const log: IntegrationLog = {
+    id: logId,
+    timestamp: new Date().toISOString(),
+    direction: "outbound",
+    endpoint: syncEndpoint,
+    payload: syncPayload,
+    response: null,
+    status: "error"
+  };
+
+  try {
+    const response = await fetch(syncEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Cookie": cookies,
+        "Authorization": "Bearer s%3AeyJtZXNzYWdlIjoiZXlKaGJHY2lPaUpJVXpJMU5pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SjFjMlZ5U1dRaU9qWXlOU3dpWlcxaGFXd2lPaUpoWW1SMWN5NXpZV3hoYlVCd1pYUndiMjlxWVM1amIyMGlMQ0p5YjJ4bFNXUWlPak16TENKMGVYQmxJam9pY21WbWNtVnphQ0lzSW1saGRDSTZNVGM0TXpBd016UTJOaXdpWlhod0lqb3hOemd6TmpBNE1qWTJMQ0poZFdRaU9pSnRZWEpyWlhSd2JHRmpaUzFoWkcxcGJpMW1jbTl1ZEdWdVpDSXNJbWx6Y3lJNkltMWhjbXRsZEhCc1lXTmxMV0ZrYldsdUluMC5aRWhqWlp6bFVhMmozcWwzVmRubVB2MzZzSUh1a1ZBZE1Cb1JvTVdfZF84IiwicHVycG9zZSI6InJlZnJlc2hfdG9rZW4ifQ.SvLQSna1OHVIdk6Ycv_tu2dYgpnB6MAqe6p_1KrMxUg"
+      },
+      body: JSON.stringify(syncPayload)
+    });
+
+    const statusCode = response.status;
+    let responseBody = "";
+    try {
+      responseBody = await response.text();
+    } catch (_) {}
+
+    log.response = {
+      statusCode,
+      statusText: response.statusText,
+      body: responseBody
+    };
+
+    if (response.ok) {
+      log.status = "success";
+      
+      trainers.forEach(t => {
+        t.leadsquared_sync.last_sync = new Date().toISOString();
+        t.leadsquared_sync.leads_updated += t.leadsquared_sync.activities_today;
+        t.leadsquared_sync.activities_today = 0;
+      });
+      await persistState(["trainers"]);
+
+      integrationLogs.unshift(log);
+      if (integrationLogs.length > 50) integrationLogs.pop();
+      await persistState(["integrationLogs"]);
+
+      return res.json({ 
+        success: true, 
+        message: "Petpooja Track App forced synchronisation completed successfully with your Marketplace API!",
+        response: log.response
+      });
+    } else {
+      log.status = "error";
+      integrationLogs.unshift(log);
+      if (integrationLogs.length > 50) integrationLogs.pop();
+      await persistState(["integrationLogs"]);
+
+      return res.status(statusCode).json({
+        success: false,
+        error: `Marketplace Admin API returned HTTP ${statusCode}`,
+        details: responseBody || response.statusText,
+        endpoint: syncEndpoint
+      });
+    }
+  } catch (err: any) {
+    log.response = {
+      error: err.message || "Network request failed to Marketplace Admin URL."
+    };
+    log.status = "error";
+    integrationLogs.unshift(log);
+    if (integrationLogs.length > 50) integrationLogs.pop();
+    await persistState(["integrationLogs"]);
+
+    return res.status(502).json({
+      success: false,
+      error: "Bad Gateway: Could not establish outbound request to your Marketplace API.",
+      details: err.message,
+      endpoint: syncEndpoint
+    });
+  }
 });
 
 // Force Sync Zoho Desk Tickets

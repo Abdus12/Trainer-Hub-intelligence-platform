@@ -512,8 +512,52 @@ export default function App() {
   const handlePetpoojaTrackSync = async () => {
     if (isStaticFrontend) {
       setIsSyncing(true);
-      setSyncStatusMsg("Pushing training metrics to Petpooja Track App (Local static)...");
-      setTimeout(() => {
+      setSyncStatusMsg("Initiating client-side direct sync to Marketplace Admin...");
+      
+      const targetUrl = "https://marketplaceadminnew.petpooja.com/api/v1/leadsquared/sync";
+      try {
+        // Send a request directly from the browser!
+        const response = await fetch(targetUrl, {
+          method: "POST",
+          mode: "cors",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer s%3AeyJtZXNzYWdlIjoiZXlKaGJHY2lPaUpJVXpJMU5pSXNJblI1Y0NJNklrcFhWQ0o5LmV5SjFjMlZ5U1dRaU9qWXlOU3dpWlcxaGFXd2lPaUpoWW1SMWN5NXpZV3hoYlVCd1pYUndiMjlxWVM1amIyMGlMQ0p5YjJ4bFNXUWlPak16TENKMGVYQmxJam9pY21WbWNtVnphQ0lzSW1saGRDSTZNVGM0TXpBd016UTJOaXdpWlhod0lqb3hOemd6TmpBNE1qWTJMQ0poZFdRaU9pSnRZWEpyWlhSd2JHRmpaUzFoWkcxcGJpMW1jbTl1ZEdWdVpDSXNJbWx6Y3lJNkltMWhjbXRsZEhCc1lXTmxMV0ZrYldsdUluMC5aRWhqWlp6bFVhMmozcWwzVmRubVB2MzZzSUh1a1ZBZE1Cb1JvTVdfZF84IiwicHVycG9zZSI6InJlZnJlc2hfdG9rZW4ifQ.SvLQSna1OHVIdk6Ycv_tu2dYgpnB6MAqe6p_1KrMxUg"
+          },
+          body: JSON.stringify({
+            sync_timestamp: new Date().toISOString(),
+            operator: "Abdus Salam",
+            trainers_count: trainers.length,
+            static_mode: true
+          })
+        });
+
+        if (response.ok) {
+          const local = loadLocalState();
+          local.trainers.forEach(t => {
+            if (t.leadsquared_sync) {
+              t.leadsquared_sync.last_sync = new Date().toISOString();
+              t.leadsquared_sync.leads_updated += t.leadsquared_sync.activities_today;
+              t.leadsquared_sync.activities_today = 0;
+            }
+          });
+          local.alerts = generateAlerts(local.trainers, local.emailLogs);
+          local.summary = computeSummary(local.trainers, local.sessions, local.emailLogs, local.alerts);
+          saveLocalState(local);
+          setTrainers(local.trainers);
+          setAlerts(local.alerts);
+          setSummary(local.summary);
+          
+          addToast("Petpooja Track App Direct Client Sync Completed! ✅", "success");
+          setSyncStatusMsg("Direct Client Sync Completed! ✅");
+          setTimeout(() => setSyncStatusMsg(""), 3000);
+        } else {
+          throw new Error(`API returned HTTP ${response.status}: ${response.statusText}`);
+        }
+      } catch (err: any) {
+        console.warn("Direct browser CORS block / static 404 handled:", err);
+        
+        // Update local state so the workflow is fully completed locally on the static frontend
         const local = loadLocalState();
         local.trainers.forEach(t => {
           if (t.leadsquared_sync) {
@@ -528,10 +572,39 @@ export default function App() {
         setTrainers(local.trainers);
         setAlerts(local.alerts);
         setSummary(local.summary);
+
+        setSyncStatusMsg("CORS boundary warning detected ⚠️");
+        
+        addToast(
+          `Vercel static client synced locally! Direct API request to marketplaceadminnew.petpooja.com was restricted by CORS or returned a network error. Full synchronization requires Node.js proxy environment.`,
+          "warning"
+        );
+        
+        // Log error diagnostics in local logs so it can be viewed in Administration tab
+        const newLog = {
+          id: `log-sync-err-${Date.now()}`,
+          timestamp: new Date().toISOString(),
+          direction: "outbound" as const,
+          endpoint: targetUrl,
+          payload: { info: "Client-side direct sync attempt" },
+          response: {
+            error_code: "CORS_BLOCK_OR_NETWORK_ERROR",
+            error_message: err.message || "Failed to fetch",
+            host_environment: "Vercel Static Hosting",
+            diagnostic_guidance: "Vercel static deployments do not run the full Express backend (server.ts). Direct browser-to-API calls to Petpooja are blocked by CORS policies. Operational parameters are safely persisted in Supabase and local storage."
+          },
+          status: "error" as const
+        };
+        
+        if (!local.integrationLogs) local.integrationLogs = [];
+        local.integrationLogs.unshift(newLog);
+        saveLocalState(local);
+        setIntegrationLogs(local.integrationLogs);
+        
+        setTimeout(() => setSyncStatusMsg(""), 4000);
+      } finally {
         setIsSyncing(false);
-        setSyncStatusMsg("Petpooja Track App Sync Completed! ✅");
-        setTimeout(() => setSyncStatusMsg(""), 3000);
-      }, 1000);
+      }
       return;
     }
 
@@ -539,12 +612,19 @@ export default function App() {
       setIsSyncing(true);
       setSyncStatusMsg("Pushing training metrics to Petpooja Track App...");
       const res = await fetch("/api/leadsquared/sync", { method: "POST" });
-      if (!res.ok) throw new Error("Petpooja Track App Sync failed");
+      const data = await res.json().catch(() => ({}));
+      
+      if (!res.ok) {
+        throw new Error(data.error || data.details || `API returned HTTP ${res.status}`);
+      }
+      
       await fetchState();
+      addToast("Petpooja Track App Sync Completed successfully! ✅", "success");
       setSyncStatusMsg("Petpooja Track App Sync Completed! ✅");
       setTimeout(() => setSyncStatusMsg(""), 3000);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      addToast(`Petpooja Track Sync Error: ${err.message}`, "error");
       setSyncStatusMsg("Petpooja Track App Sync Failed ❌");
     } finally {
       setIsSyncing(false);
