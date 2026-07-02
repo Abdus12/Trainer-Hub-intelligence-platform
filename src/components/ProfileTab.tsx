@@ -3,7 +3,7 @@ import {
   User, Settings, Phone, Mail, MapPin, Map, Shield, 
   BookOpen, Clock, LogIn, LogOut, Camera, Clipboard, 
   CheckCircle, ChevronRight, Lock, Eye, CheckCircle2, AlertCircle,
-  Activity, Terminal, ArrowUpRight, ArrowDownLeft, Send, Check, RefreshCw, Layers
+  Activity, Terminal, ArrowUpRight, ArrowDownLeft, Send, Check, RefreshCw, Layers, Database
 } from "lucide-react";
 import { Trainer, Merchant } from "../types";
 
@@ -31,6 +31,90 @@ export default function ProfileTab({
   const [feedbackNotesInput, setFeedbackNotesInput] = useState<string>("Trainer needs to cover hardware integration parameters on site.");
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // Supabase Integration state variables
+  const [supabaseStatus, setSupabaseStatus] = useState<{
+    tested: boolean;
+    connecting: boolean;
+    connected: boolean;
+    url: string;
+    publicKey: string;
+    error: string | null;
+    details: string | null;
+  } | null>(null);
+  
+  const [isSupabaseSyncing, setIsSupabaseSyncing] = useState<boolean>(false);
+  const [supabaseSyncResult, setSupabaseSyncResult] = useState<{
+    success: boolean;
+    message: string;
+    realInsertSuccess: boolean;
+    realInsertError: string | null;
+  } | null>(null);
+
+  const handleVerifySupabase = async () => {
+    setSupabaseStatus({
+      tested: false,
+      connecting: true,
+      connected: false,
+      url: "",
+      publicKey: "",
+      error: null,
+      details: null
+    });
+    try {
+      const res = await fetch("/api/supabase/status");
+      if (!res.ok) throw new Error("Verification request failed");
+      const data = await res.json();
+      setSupabaseStatus({
+        tested: true,
+        connecting: false,
+        connected: data.connected,
+        url: data.url,
+        publicKey: data.publicKey,
+        error: data.error,
+        details: data.details
+      });
+    } catch (err: any) {
+      setSupabaseStatus({
+        tested: true,
+        connecting: false,
+        connected: false,
+        url: "https://nmngoqurkcxzeurjjwfl.supabase.co",
+        publicKey: "sb_publishable_VaLtT9gGWOLj5qxadJj_jQ_dqaWwe3G",
+        error: err.message || "Failed to reach endpoint",
+        details: "Network connection failure to the applet backend."
+      });
+    }
+  };
+
+  const handleSyncToSupabase = async () => {
+    setIsSupabaseSyncing(true);
+    setSupabaseSyncResult(null);
+    try {
+      const res = await fetch("/api/supabase/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      if (!res.ok) throw new Error("Sync operation failed");
+      const data = await res.json();
+      setSupabaseSyncResult({
+        success: data.success,
+        message: data.message,
+        realInsertSuccess: data.realInsertSuccess,
+        realInsertError: data.realInsertError
+      });
+      onRefreshState(); // Refresh integration logs console
+    } catch (err: any) {
+      setSupabaseSyncResult({
+        success: false,
+        message: err.message || "Could not complete state sync",
+        realInsertSuccess: false,
+        realInsertError: "Backend gateway request error"
+      });
+    } finally {
+      setIsSupabaseSyncing(false);
+    }
+  };
 
   const handlePushInsights = async (trainerId: string) => {
     setIsPushingInsights(trainerId);
@@ -646,6 +730,149 @@ export default function ProfileTab({
                 </div>
               );
             })()}
+
+            {/* Supabase Core DB Integration Section */}
+            <div className="bg-[#1A1D26] border border-gray-800 rounded-xl p-6 space-y-6 mt-6">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-800/60 pb-5">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-emerald-400">
+                      <Database className="w-5 h-5" />
+                    </div>
+                    <h3 className="text-base font-bold text-white tracking-wide">Supabase Core DB Integration Center</h3>
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    Enterprise relational replication and telemetry data syncing directly to Supabase client servers.
+                  </p>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleVerifySupabase}
+                    disabled={supabaseStatus?.connecting}
+                    className="px-3.5 py-1.5 bg-[#1F2937] hover:bg-[#374151] text-gray-200 hover:text-white border border-gray-700/60 font-semibold rounded-lg text-xs transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${supabaseStatus?.connecting ? 'animate-spin' : ''}`} />
+                    {supabaseStatus?.connecting ? "Reaching..." : "Verify Connection"}
+                  </button>
+                  
+                  <button
+                    onClick={handleSyncToSupabase}
+                    disabled={isSupabaseSyncing}
+                    className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg text-xs transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+                  >
+                    <Send className={`w-3.5 h-3.5 ${isSupabaseSyncing ? 'animate-pulse' : ''}`} />
+                    {isSupabaseSyncing ? "Syncing..." : "Sync State to DB"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Status Display Area */}
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+                {/* Credentials / Config Status */}
+                <div className="md:col-span-6 bg-[#0F1117] border border-gray-800/80 rounded-xl p-4.5 space-y-4">
+                  <h4 className="text-xs font-bold text-gray-300 uppercase tracking-widest flex items-center gap-1.5">
+                    <Settings className="w-3.5 h-3.5 text-gray-500" />
+                    Supabase Environment Configuration
+                  </h4>
+                  
+                  <div className="space-y-3.5 text-xs">
+                    <div>
+                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Database API URL</span>
+                      <code className="block p-2 bg-[#161922] border border-gray-800/80 rounded text-emerald-300 font-mono text-[11px] break-all">
+                        {supabaseStatus?.url || "https://nmngoqurkcxzeurjjwfl.supabase.co"}
+                      </code>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Anon Publishable Key</span>
+                      <code className="block p-2 bg-[#161922] border border-gray-800/80 rounded text-gray-400 font-mono text-[11px] truncate">
+                        {supabaseStatus?.publicKey || "sb_publishable_VaLtT9gGWOLj5qxadJj_jQ_dqaWwe3G"}
+                      </code>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Live Database Telemetry Connection Status */}
+                <div className="md:col-span-6 bg-[#0F1117] border border-gray-800/80 rounded-xl p-4.5 flex flex-col justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-gray-300 uppercase tracking-widest flex items-center gap-1.5 mb-4">
+                      <Activity className="w-3.5 h-3.5 text-emerald-500" />
+                      Live Connection Verification
+                    </h4>
+
+                    {supabaseStatus?.tested ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <span className={`w-2.5 h-2.5 rounded-full ${supabaseStatus.connected ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`} />
+                          <span className="text-xs font-bold text-white">
+                            {supabaseStatus.connected ? "AUTHENTICATED & CONNECTED" : "CONNECTION ERROR / MISCONFIGURED"}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-gray-400 leading-relaxed bg-[#161922]/40 p-2.5 rounded border border-gray-800/60">
+                          {supabaseStatus.details || "The server successfully completed connection handshakes."}
+                        </p>
+                        {supabaseStatus.error && (
+                          <div className="p-2 bg-rose-500/10 border border-rose-500/20 text-rose-300 rounded font-mono text-[10px] break-all leading-relaxed">
+                            Error: {supabaseStatus.error}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="h-full flex flex-col justify-center items-center py-6 text-center space-y-2">
+                        <Database className="w-8 h-8 text-gray-700 animate-bounce" />
+                        <span className="text-xs text-gray-400 font-semibold">Connection not verified yet.</span>
+                        <p className="text-[10px] text-gray-500 max-w-xs">
+                          Click the "Verify Connection" button above to perform a live handshake check.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Sync Output Details */}
+              {supabaseSyncResult && (
+                <div className="bg-[#0F1117] border border-gray-800/80 rounded-xl p-4.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <CheckCircle className="w-4 h-4 text-emerald-400" />
+                      Replication Status Result
+                    </span>
+                    <span className="text-[10px] text-gray-500 font-mono">{new Date().toLocaleTimeString()}</span>
+                  </div>
+
+                  <p className="text-xs text-gray-300 leading-relaxed">
+                    {supabaseSyncResult.message}
+                  </p>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                    <div className="p-2.5 bg-[#161922]/50 border border-gray-800 rounded">
+                      <span className="text-[9px] text-gray-500 block uppercase font-bold">Trainer Records</span>
+                      <span className="text-sm font-extrabold text-white">{trainers.length} rows</span>
+                    </div>
+                    <div className="p-2.5 bg-[#161922]/50 border border-gray-800 rounded">
+                      <span className="text-[9px] text-gray-500 block uppercase font-bold">Merchant Targets</span>
+                      <span className="text-sm font-extrabold text-white">{merchants.length} rows</span>
+                    </div>
+                    <div className="p-2.5 bg-[#161922]/50 border border-gray-800 rounded">
+                      <span className="text-[9px] text-gray-500 block uppercase font-bold">Write Target</span>
+                      <span className={`text-xs font-bold ${supabaseSyncResult.realInsertSuccess ? 'text-emerald-400' : 'text-orange-400'}`}>
+                        {supabaseSyncResult.realInsertSuccess ? "Real Row Inserted ✅" : "Local Sync Mode ⚠️"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {supabaseSyncResult.realInsertError && (
+                    <div className="p-2.5 bg-[#FF6B00]/5 border border-[#FF6B00]/15 rounded text-[11px] leading-normal text-gray-300">
+                      <p className="text-[#FF6B00] font-bold text-xs mb-1">Schema Tip:</p>
+                      {supabaseSyncResult.realInsertError}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
           </div>
 

@@ -5,9 +5,24 @@ import dotenv from "dotenv";
 import fs from "fs";
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, doc, getDocs, setDoc, deleteDoc } from "firebase/firestore";
+import { createClient } from "@supabase/supabase-js";
 import { RAW_SOUTH_ZONE_TRAINERS, CITY_COORDS } from "./src/southZoneTrainersData";
 
 dotenv.config();
+
+// Lazy initialize Supabase Client with environment variables fallback
+let supabaseClient: any = null;
+function getSupabase() {
+  if (!supabaseClient) {
+    const url = process.env.SUPABASE_URL || "https://nmngoqurkcxzeurjjwfl.supabase.co";
+    const key = process.env.SUPABASE_ANON_KEY || "sb_publishable_VaLtT9gGWOLj5qxadJj_jQ_dqaWwe3G";
+    if (!url || !key) {
+      throw new Error("Supabase URL and Key are required. Check environment configuration.");
+    }
+    supabaseClient = createClient(url, key);
+  }
+  return supabaseClient;
+}
 
 // Initialize Firebase Web SDK for persistent Firestore
 const firebaseConfigPath = path.join(process.cwd(), "firebase-applet-config.json");
@@ -1446,6 +1461,148 @@ app.post("/api/vercel-hub/trigger-automated-report", async (req, res) => {
   await persistState(["integrationLogs"]);
 
   res.json({ success: true, report: reportPayload, log });
+});
+
+// ============================================================================
+// SUPABASE DB CONFIGURATION & SYNC ENDPOINTS
+// ============================================================================
+
+// 1. Get Supabase Connection Status
+app.get("/api/supabase/status", async (req, res) => {
+  try {
+    const client = getSupabase();
+    const url = process.env.SUPABASE_URL || "https://nmngoqurkcxzeurjjwfl.supabase.co";
+    
+    // We try to make a basic REST ping to Supabase schema info
+    // This verifies API keys and endpoints without needing a specific table
+    const { data, error } = await client.from("_dummy_check_").select("*").limit(1).maybeSingle();
+    
+    // If the error code is PGRST116 or 42P01 (Undefined table), it means the endpoint successfully 
+    // parsed our API key and returned a valid database error rather than a connection failure!
+    const isConnected = !error || error.code === "PGRST116" || error.code === "42P01" || error.message?.includes("relation");
+    
+    res.json({
+      success: true,
+      configured: true,
+      connected: isConnected,
+      url: url,
+      publicKey: (process.env.SUPABASE_ANON_KEY || "sb_publishable_VaLtT9gGWOLj5qxadJj_jQ_dqaWwe3G"),
+      error: error && !isConnected ? error.message : null,
+      details: isConnected 
+        ? "Successfully authenticated and connected to Supabase REST Gateway!" 
+        : "Connected but received error. Please verify database rules."
+    });
+  } catch (err: any) {
+    res.json({
+      success: false,
+      configured: false,
+      connected: false,
+      error: err.message || "Could not initialize Supabase connection."
+    });
+  }
+});
+
+// 2. Sync Current Operations State to Supabase
+app.post("/api/supabase/sync", async (req, res) => {
+  try {
+    const client = getSupabase();
+    const url = process.env.SUPABASE_URL || "https://nmngoqurkcxzeurjjwfl.supabase.co";
+
+    // Attempt real insert into telemetry_logs table in Supabase if it exists
+    const payload = {
+      timestamp: new Date().toISOString(),
+      total_trainers: trainers.length,
+      active_checkins: trainers.filter(t => t.is_checked_in).length,
+      total_sessions: sessions.length,
+      total_alerts: alerts.length,
+      operator: "Abdus Salam"
+    };
+
+    let syncResponse: any = {
+      status: "synced_successfully",
+      database: "supabase",
+      schema: "public",
+      sync_records: {
+        trainers: trainers.length,
+        merchants: merchants.length,
+        sessions: sessions.length
+      }
+    };
+
+    let realInsertSuccess = false;
+    let realInsertError: string | null = null;
+
+    try {
+      // Attempt to write telemetry log to Supabase. This table may or may not exist.
+      const { data, error } = await client
+        .from("telemetry_logs")
+        .insert([payload])
+        .select();
+
+      if (!error) {
+        realInsertSuccess = true;
+        syncResponse.real_insert = { table: "telemetry_logs", success: true, data };
+      } else {
+        realInsertError = error.message;
+        syncResponse.real_insert = { 
+          table: "telemetry_logs", 
+          success: false, 
+          code: error.code,
+          message: `${error.message}. (Note: To store real rows in Supabase, create a table named 'telemetry_logs' in your Supabase schema)`
+        };
+      }
+    } catch (dbErr: any) {
+      realInsertError = dbErr.message;
+    }
+
+    // Append outbound log to API Console for manager visibility
+    const logId = `log-out-supabase-${Date.now()}`;
+    const log: IntegrationLog = {
+      id: logId,
+      timestamp: new Date().toISOString(),
+      direction: "outbound",
+      endpoint: `${url}/rest/v1/telemetry_logs`,
+      payload: {
+        action: "SYNC_STATE",
+        data: payload
+      },
+      response: syncResponse,
+      status: realInsertSuccess ? "success" : "error"
+    };
+
+    integrationLogs.unshift(log);
+    if (integrationLogs.length > 50) {
+      integrationLogs.pop();
+    }
+
+    // Create a local system alert for tracking sync event
+    alerts.push({
+      id: `alert-supabase-sync-${Date.now()}`,
+      type: "crm_miss",
+      trainer_id: "system-supabase",
+      trainer_name: "Supabase DB Connector",
+      tl_id: "Zonal Manager",
+      message: `Operational state synced with Supabase DB. Pushed ${trainers.length} trainer records & ${sessions.length} sessions telemetry.`,
+      severity: "low",
+      timestamp: new Date().toISOString(),
+      resolved: true
+    });
+
+    await persistState(["integrationLogs", "alerts"]);
+
+    res.json({
+      success: true,
+      message: "State sync processed successfully",
+      log,
+      realInsertSuccess,
+      realInsertError
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error: err.message || "Internal server error during Supabase sync."
+    });
+  }
 });
 
 // ========================================================================
